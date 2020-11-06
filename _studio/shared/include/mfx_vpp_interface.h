@@ -275,7 +275,6 @@ namespace MfxHwVideoProcessing
                ,Contrast(0)
                ,Hue(0)
                ,Saturation(0)
-               ,bSceneDetectionEnable(false)
                ,bVarianceEnable(false)
                ,bImgStabilizationEnable(false)
                ,istabMode(0)
@@ -292,6 +291,9 @@ namespace MfxHwVideoProcessing
                ,iFieldProcessingMode(0)
                ,rotation(0)
                ,scalingMode(MFX_SCALING_MODE_DEFAULT)
+#if (MFX_VERSION >= 1033)
+               ,interpolationMethod(MFX_INTERPOLATION_DEFAULT)
+#endif
 #if (MFX_VERSION >= 1025)
                ,chromaSiting(MFX_CHROMA_SITING_UNKNOWN)
 #endif
@@ -342,7 +344,6 @@ namespace MfxHwVideoProcessing
                     detailFactor != 0 ||
                     iTargetInterlacingMode != 0 ||
                     bEnableProcAmp != false ||
-                    bSceneDetectionEnable != false ||
                     bVarianceEnable != false ||
                     bImgStabilizationEnable != false ||
                     bFRCEnable != false ||
@@ -398,8 +399,6 @@ namespace MfxHwVideoProcessing
         mfxF64         Hue;
         mfxF64         Saturation;
 
-        bool           bSceneDetectionEnable;
-
         bool           bVarianceEnable;
         bool           bImgStabilizationEnable;
         mfxU32         istabMode;
@@ -424,6 +423,10 @@ namespace MfxHwVideoProcessing
         int         rotation;
 
         mfxU16      scalingMode;
+
+#if (MFX_VERSION >= 1033)
+        mfxU16      interpolationMethod;
+#endif
 
         mfxU16      chromaSiting;
 

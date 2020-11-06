@@ -1,15 +1,15 @@
-// Copyright (c) 2017 Intel Corporation
-// 
+// Copyright (c) 2017-2020 Intel Corporation
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -131,6 +131,8 @@ public:
 
     bool IsError() const {return m_bError;}
 
+    bool GetRapPicFlag() const;
+
 public:
 
     MemoryPiece m_source;                                 // (MemoryPiece *) pointer to owning memory piece
@@ -161,6 +163,8 @@ protected:
     const H265SeqParamSet* m_pSeqParamSet;                      // (H265SeqParamSet *) pointer to array of sequence parameters sets
 public:
     H265DecoderFrame *m_pCurrentFrame;        // (H265DecoderFrame *) pointer to destination frame
+
+    int32_t m_NumEmuPrevnBytesInSliceHdr;                        // (int32_t) number of emulation prevention bytes in slice head
 
     int32_t m_iNumber;                                           // (int32_t) current slice number
     int32_t m_iFirstMB;                                          // (int32_t) first MB number in slice
@@ -197,8 +201,16 @@ public:
         m_tileByteLocation = new uint32_t[val];
     }
 
+    void setRefPOCListSliceHeader();
+
     // For dependent slice copy data from another slice
     void CopyFromBaseSlice(const H265Slice * slice);
+
+    uint32_t getTileColumnWidth(uint32_t col) const;
+    uint32_t getTileRowHeight(uint32_t row) const;
+
+    uint32_t getTileXIdx() const;
+    uint32_t getTileYIdx() const;
 };
 
 // Check whether two slices are from the same picture. HEVC spec 7.4.2.4.5
@@ -217,7 +229,7 @@ bool IsPictureTheSame(H265Slice *pSliceOne, H265Slice *pSliceTwo)
     if (pOne->slice_pic_parameter_set_id != pTwo->slice_pic_parameter_set_id)
         return false;
 
-    if (pOne->slice_pic_order_cnt_lsb != pTwo->slice_pic_order_cnt_lsb)
+    if (pOne->m_poc != pTwo->m_poc)
         return false;
 
     return true;

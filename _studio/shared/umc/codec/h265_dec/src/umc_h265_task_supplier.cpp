@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Intel Corporation
+// Copyright (c) 2018-2020 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -132,7 +132,7 @@ UMC::Status DecReferencePictureMarking_H265::UpdateRefPicMarking(ViewItem_H265 &
                 int32_t count = rps->getNumberOfPositivePictures() + rps->getNumberOfNegativePictures();
                 for(i = 0; i < count; i++)
                 {
-                    if (!pTmp->isLongTermRef() && pTmp->m_PicOrderCnt == pSlice->GetSliceHeader()->slice_pic_order_cnt_lsb + rps->getDeltaPOC(i))
+                    if (!pTmp->isLongTermRef() && pTmp->m_PicOrderCnt == pSlice->GetSliceHeader()->m_poc + rps->getDeltaPOC(i))
                     {
                         isReferenced = true;
                         pTmp->SetisShortTermRef(true);
@@ -156,7 +156,8 @@ UMC::Status DecReferencePictureMarking_H265::UpdateRefPicMarking(ViewItem_H265 &
                     }
                     else
                     {
-                        if ((pTmp->m_PicOrderCnt % (1 << pSlice->GetSeqParam()->log2_max_pic_order_cnt_lsb)) == rps->getPOC(i) % (1 << pSlice->GetSeqParam()->log2_max_pic_order_cnt_lsb))
+                        int const MaxPicOrderCntLsb = 1 << pSlice->GetSeqParam()->log2_max_pic_order_cnt_lsb;
+                        if ((pTmp->m_PicOrderCnt & (MaxPicOrderCntLsb - 1)) == (rps->getPOC(i) & (MaxPicOrderCntLsb - 1)))
                         {
                             isReferenced = true;
                             pTmp->SetisLongTermRef(true);
@@ -169,7 +170,7 @@ UMC::Status DecReferencePictureMarking_H265::UpdateRefPicMarking(ViewItem_H265 &
 
             // mark the picture as "unused for reference" if it is not in
             // the Reference Picture Set
-            if(pTmp->m_PicOrderCnt != pSlice->GetSliceHeader()->slice_pic_order_cnt_lsb && !isReferenced)
+            if(pTmp->m_PicOrderCnt != pSlice->GetSliceHeader()->m_poc && !isReferenced)
             {
                 pTmp->SetisShortTermRef(false);
                 pTmp->SetisLongTermRef(false);
@@ -178,7 +179,7 @@ UMC::Status DecReferencePictureMarking_H265::UpdateRefPicMarking(ViewItem_H265 &
             // WA: To fix incorrect stream having same (as incoming slice) POC in DPB
             // Mark a older frame having similar POCs within DPBList as unused reference frame if similar mutiple POCs are found
             // within the DPBList. This is to prevent the DPBList from max out with unused reference frame kept as reference picture.
-            else if(pTmp->m_PicOrderCnt == pSlice->GetSliceHeader()->slice_pic_order_cnt_lsb && !isReferenced && pTmp->isShortTermRef())
+            else if(pTmp->m_PicOrderCnt == pSlice->GetSliceHeader()->m_poc && !isReferenced && pTmp->isShortTermRef())
             {
                 pTmp->SetisShortTermRef(false);
                 pTmp->SetisLongTermRef(false);
@@ -622,6 +623,7 @@ TaskSupplier_H265::TaskSupplier_H265()
     , m_use_external_framerate(false)
     , m_decodedOrder(false)
     , m_checkCRAInsideResetProcess(false)
+    , m_bFirstSliceInSequence(true)
     , m_pLastSlice(0)
     , m_pLastDisplayed(0)
     , m_pMemoryAllocator(0)
@@ -1926,6 +1928,33 @@ H265Slice *TaskSupplier_H265::DecodeSliceHeader(UMC::MediaDataEx *nalUnit)
     m_Headers.m_SeqParams.SetCurrentID(pps->pps_seq_parameter_set_id);
     m_Headers.m_PicParams.SetCurrentID(pps->pps_pic_parameter_set_id);
 
+    // calculate max entrypoints number
+    H265SeqParamSet const* sps = pSlice->GetSeqParam();
+    if (pps->entropy_coding_sync_enabled_flag)
+    {
+        int NumOfMaxEntryPoints = 0;
+        int PicHeightInCtbsY = sps->HeightInCU;
+
+        if (pps->tiles_enabled_flag == 0)
+            NumOfMaxEntryPoints = PicHeightInCtbsY;
+        else
+            NumOfMaxEntryPoints = PicHeightInCtbsY * (pps->num_tile_columns);
+
+        //reallocate memory for slice header
+        if (NumOfMaxEntryPoints > DEFAULT_MAX_ENETRY_POINT_NUM)
+        {
+            //offset_len_minus1[0-31], assume maximum 31[4 bytes]
+            int newsize = 2048 + NumOfMaxEntryPoints * 4 + DEFAULT_NU_TAIL_SIZE;
+            pSlice->m_source.Allocate(newsize);
+            nalUnit->SetDataSize(newsize);
+
+            //swap buffer again, since buffer is small at first time
+            removed_offsets.clear();
+            memCopy.SetData(nalUnit);
+            swapper->SwapMemory(&pSlice->m_source, &memCopy, &removed_offsets);
+        }
+    }
+
     pSlice->m_pCurrentFrame = NULL;
 
     memory_leak_preventing.ClearNotification();
@@ -1970,7 +1999,7 @@ H265Slice *TaskSupplier_H265::DecodeSliceHeader(UMC::MediaDataEx *nalUnit)
     uint32_t currOffset = sliceHdr->m_HeaderBitstreamOffset;
     uint32_t currOffsetWithEmul = currOffset;
 
-    size_t headersEmuls = 0;
+    uint32_t headersEmuls = 0;
     for (; headersEmuls < removed_offsets.size(); headersEmuls++)
     {
         if (removed_offsets[headersEmuls] < currOffsetWithEmul)
@@ -1978,6 +2007,8 @@ H265Slice *TaskSupplier_H265::DecodeSliceHeader(UMC::MediaDataEx *nalUnit)
         else
             break;
     }
+
+    pSlice->m_NumEmuPrevnBytesInSliceHdr = headersEmuls;
 
     // Update entry points
     size_t offsets = removed_offsets.size();
@@ -2009,8 +2040,6 @@ H265Slice *TaskSupplier_H265::DecodeSliceHeader(UMC::MediaDataEx *nalUnit)
                 offsets -= removed_bytes;
                 removed_bytes = 0;
             }
-            else
-                pSlice->m_tileByteLocation[tile] = pSlice->m_tileByteLocation[tile] - removed_bytes;
         }
     }
 
@@ -2071,21 +2100,15 @@ void TaskSupplier_H265::ActivateHeaders(H265SeqParamSet *sps, H265PicParamSet *p
 // Calculate NoRaslOutputFlag flag for specified slice
 void TaskSupplier_H265::CheckCRAOrBLA(const H265Slice *pSlice)
 {
-    if (pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_IDR_W_RADL
-        || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_IDR_N_LP
-        || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_CRA
-        || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_LP
-        || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_RADL
-        || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_N_LP)
-    {
-        if (pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_LP
-            || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_RADL
-            || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_N_LP)
-            NoRaslOutputFlag = 1;
+    uint8_t no_output_of_prior_pics_flag = pSlice->GetSliceHeader()->no_output_of_prior_pics_flag;
 
-        if (pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_IDR_W_RADL || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_IDR_N_LP)
+    if (pSlice->GetRapPicFlag())
+    {
+        if ((pSlice->GetSliceHeader()->nal_unit_type >= NAL_UT_CODED_SLICE_BLA_W_LP &&
+             pSlice->GetSliceHeader()->nal_unit_type <= NAL_UT_CODED_SLICE_IDR_N_LP) ||
+            (pSlice->GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_CRA && m_bFirstSliceInSequence))
         {
-            NoRaslOutputFlag = 0;
+            NoRaslOutputFlag = true;
         }
 
         if (pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_CRA && m_IRAPType != NAL_UT_INVALID)
@@ -2095,35 +2118,35 @@ void TaskSupplier_H265::CheckCRAOrBLA(const H265Slice *pSlice)
 
         if (NoRaslOutputFlag)
         {
-            m_RA_POC = pSlice->m_SliceHeader.slice_pic_order_cnt_lsb;
+            m_RA_POC = pSlice->m_SliceHeader.m_poc;
+        }
+
+        //the inference for NoOutputPriorPicsFlag
+        if (!m_bFirstSliceInSequence && NoRaslOutputFlag)
+        {
+            if (pSlice->GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_CRA)
+            {
+                no_output_of_prior_pics_flag = true;
+            }
+        }
+        else
+        {
+            no_output_of_prior_pics_flag = false;
         }
 
         m_IRAPType = pSlice->m_SliceHeader.nal_unit_type;
     }
 
-    if ((pSlice->GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_CRA && NoRaslOutputFlag) ||
-        pSlice->GetSliceHeader()->no_output_of_prior_pics_flag)
+    m_bFirstSliceInSequence = false;
+
+    //Check NoOutputPriorPics
+    if (pSlice->GetRapPicFlag() && no_output_of_prior_pics_flag)
     {
-        int32_t minRefPicResetCount = 0xff; // because it is possible that there is no frames with RefPicListResetCount() equals 0 (after EOS!!)
-        for (H265DecoderFrame *pCurr = GetView()->pDPB->head(); pCurr; pCurr = pCurr->future())
-        {
-            if (pCurr->isDisplayable() && !pCurr->wasOutputted())
-            {
-                minRefPicResetCount = std::min(minRefPicResetCount, pCurr->RefPicListResetCount());
-            }
-        }
 
         for (H265DecoderFrame *pCurr = GetView()->pDPB->head(); pCurr; pCurr = pCurr->future())
         {
-            if (pCurr->RefPicListResetCount() > minRefPicResetCount || pCurr->wasOutputted())
-                continue;
-
-            if (pCurr->isDisplayable())
-            {
-                DEBUG_PRINT((VM_STRING("Skip frame no_output_of_prior_pics_flag - %s\n"), GetFrameInfoString(pCurr)));
-                pCurr->m_pic_output = false;
-                pCurr->SetisDisplayable(false);
-            }
+            pCurr->m_pic_output = false;
+            pCurr->SetisDisplayable(false);
         }
     }
 }
@@ -2133,10 +2156,10 @@ bool TaskSupplier_H265::IsSkipForCRAorBLA(const H265Slice *pSlice)
 {
     if (NoRaslOutputFlag)
     {
-        if (pSlice->m_SliceHeader.slice_pic_order_cnt_lsb == m_RA_POC)
+        if (pSlice->m_SliceHeader.m_poc == m_RA_POC)
             return false;
 
-        if (pSlice->m_SliceHeader.slice_pic_order_cnt_lsb < m_RA_POC &&
+        if (pSlice->m_SliceHeader.m_poc < m_RA_POC &&
             (pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_RASL_R || pSlice->m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_RASL_N))
         {
             return true;
@@ -2345,13 +2368,13 @@ UMC::Status TaskSupplier_H265::InitFreeFrame(H265DecoderFrame * pFrame, const H2
     //int32_t iCUCount = pSeqParam->WidthInCU * pSeqParam->HeightInCU;
     //pFrame->m_CodingData->m_NumCUsInFrame = iCUCount;
 
-    pFrame->m_FrameType = SliceTypeToFrameType(pSlice->GetSliceHeader()->slice_type);
-    pFrame->m_dFrameTime = pSlice->m_source.GetTime();
-    pFrame->m_crop_left = pSeqParam->conf_win_left_offset + pSeqParam->def_disp_win_left_offset;
-    pFrame->m_crop_right = pSeqParam->conf_win_right_offset + pSeqParam->def_disp_win_right_offset;
-    pFrame->m_crop_top = pSeqParam->conf_win_top_offset + pSeqParam->def_disp_win_top_offset;
-    pFrame->m_crop_bottom = pSeqParam->conf_win_bottom_offset + pSeqParam->def_disp_win_bottom_offset;
-    pFrame->m_crop_flag = pSeqParam->conformance_window_flag;
+    pFrame->m_FrameType   = SliceTypeToFrameType(pSlice->GetSliceHeader()->slice_type);
+    pFrame->m_dFrameTime  = pSlice->m_source.GetTime();
+    pFrame->m_crop_left   = pSeqParam->conf_win_left_offset;
+    pFrame->m_crop_right  = pSeqParam->conf_win_right_offset;
+    pFrame->m_crop_top    = pSeqParam->conf_win_top_offset;
+    pFrame->m_crop_bottom = pSeqParam->conf_win_bottom_offset;
+    pFrame->m_crop_flag   = pSeqParam->conformance_window_flag;
 
     pFrame->m_aspect_width  = pSeqParam->sar_width;
     pFrame->m_aspect_height = pSeqParam->sar_height;
@@ -2498,7 +2521,7 @@ void TaskSupplier_H265::InitFrameCounter(H265DecoderFrame * pFrame, const H265Sl
         view.pDPB->IncreaseRefPicListResetCount(pFrame);
     }
 
-    pFrame->setPicOrderCnt(sliceHeader->slice_pic_order_cnt_lsb);
+    pFrame->setPicOrderCnt(sliceHeader->m_poc);
 
     DEBUG_PRINT((VM_STRING("Init frame %s\n"), GetFrameInfoString(pFrame)));
 

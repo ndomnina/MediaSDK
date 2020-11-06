@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Intel Corporation
+// Copyright (c) 2018-2020 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -317,7 +317,7 @@ struct Task : DpbFrame
     Slice             m_sh                            = {};
 
     mfxU32            m_idxBs                         = IDX_INVALID;
-    mfxU8             m_idxCUQp                       = IDX_INVALID;
+    mfxU32            m_idxCUQp                       = IDX_INVALID;
     bool              m_bCUQPMap                      = false;
 
     mfxU8             m_refPicList[2][MAX_DPB_SIZE]   = {};
@@ -542,6 +542,10 @@ namespace ExtBuffer
 #if (MFX_VERSION >= 1025)
         MFX_COPY_FIELD(EnableNalUnitType);
 #endif
+#if MFX_VERSION >= MFX_VERSION_NEXT
+        MFX_COPY_FIELD(DeblockingAlphaTcOffset);
+        MFX_COPY_FIELD(DeblockingBetaOffset);
+#endif
         MFX_COPY_FIELD(LowDelayBRC);
     }
 
@@ -550,7 +554,6 @@ namespace ExtBuffer
         MFX_COPY_FIELD(NumActiveRefBL0);
         MFX_COPY_FIELD(NumActiveRefBL1);
         MFX_COPY_FIELD(NumActiveRefP);
-        MFX_COPY_FIELD(LCUSize);
         MFX_COPY_FIELD(QpAdjust);
     }
     inline void  CopySupportedParams(mfxExtEncoderCapability& buf_dst, mfxExtEncoderCapability& buf_src)

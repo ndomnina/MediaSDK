@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Intel Corporation
+// Copyright (c) 2018-2020 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,6 @@
 #include "libmfx_core_interface.h"
 #include "genx_scd_gen8_isa.h"
 #include "genx_scd_gen9_isa.h"
-#include "genx_scd_gen10_isa.h"
 #include "genx_scd_gen11_isa.h"
 #include "genx_scd_gen11lp_isa.h"
 #include "genx_scd_gen12lp_isa.h"
@@ -34,6 +33,7 @@
 #include "motion_estimation_engine.h"
 #include <limits.h>
 #include <algorithm>
+#include <cmath>
 
 using std::min;
 using std::max;
@@ -220,14 +220,16 @@ ASC_API ASC::ASC()
 
     m_AVX2_available = 0;
     m_SSE4_available = 0;
-    GainOffset = nullptr;
-    RsCsCalc_4x4 = nullptr;
-    RsCsCalc_bound = nullptr;
-    RsCsCalc_diff = nullptr;
-    ImageDiffHistogram = nullptr;
+    GainOffset              = nullptr;
+    RsCsCalc_4x4            = nullptr;
+    RsCsCalc_bound          = nullptr;
+    RsCsCalc_diff           = nullptr;
+    ImageDiffHistogram      = nullptr;
     ME_SAD_8x8_Block_Search = nullptr;
-    Calc_RaCa_pic = nullptr;
-    resizeFunc = nullptr;
+    Calc_RaCa_pic           = nullptr;
+    resizeFunc              = nullptr;
+    ME_SAD_8x8_Block        = nullptr;
+    ME_VAR_8x8_Block        = nullptr;
 }
 
 void ASC::Setup_Environment() {
@@ -305,6 +307,8 @@ mfxStatus ASC::InitGPUsurf(CmDevice* pCmDevice) {
         res = m_device->LoadProgram((void *)genx_scd_gen11lp, sizeof(genx_scd_gen11lp), m_program, "nojitter");
         break;
     case PLATFORM_INTEL_TGLLP:
+    case PLATFORM_INTEL_RKL:
+    case PLATFORM_INTEL_DG1:
         res = m_device->LoadProgram((void *)genx_scd_gen12lp, sizeof(genx_scd_gen12lp), m_program, "nojitter");
         break;
     default:
@@ -663,14 +667,10 @@ mfxStatus ASC::SetDimensions(mfxI32 Width, mfxI32 Height, mfxI32 Pitch) {
 #define ASC_CPU_DISP_INIT_SSE4(func)        (func = (func ## _SSE4))
 #define ASC_CPU_DISP_INIT_SSE4_C(func)      (m_SSE4_available ? ASC_CPU_DISP_INIT_SSE4(func) : ASC_CPU_DISP_INIT_C(func))
 
-#if defined(__AVX2__)
 #define ASC_CPU_DISP_INIT_AVX2(func)        (func = (func ## _AVX2))
 #define ASC_CPU_DISP_INIT_AVX2_SSE4_C(func) (m_AVX2_available ? ASC_CPU_DISP_INIT_AVX2(func) : ASC_CPU_DISP_INIT_SSE4_C(func))
 #define ASC_CPU_DISP_INIT_AVX2_C(func)      (m_AVX2_available ? ASC_CPU_DISP_INIT_AVX2(func) : ASC_CPU_DISP_INIT_C(func))
-#else
-#define ASC_CPU_DISP_INIT_AVX2_SSE4_C       ASC_CPU_DISP_INIT_SSE4_C
-#define ASC_CPU_DISP_INIT_AVX2_C            ASC_CPU_DISP_INIT_C
-#endif
+
 ASC_API mfxStatus ASC::Init(mfxI32 Width, mfxI32 Height, mfxI32 Pitch, mfxU32 PicStruct, CmDevice* pCmDevice)
 {
     mfxStatus sts = MFX_ERR_NONE;
@@ -684,6 +684,12 @@ ASC_API mfxStatus ASC::Init(mfxI32 Width, mfxI32 Height, mfxI32 Pitch, mfxU32 Pi
 
     m_AVX2_available = CpuFeature_AVX2();
     m_SSE4_available = CpuFeature_SSE41();
+
+    if (!m_SSE4_available)
+        return MFX_ERR_UNSUPPORTED;
+
+    ME_SAD_8x8_Block    = ME_SAD_8x8_Block_SSE4;
+    ME_VAR_8x8_Block    = ME_VAR_8x8_Block_SSE4;
 
     ASC_CPU_DISP_INIT_C(GainOffset);
     ASC_CPU_DISP_INIT_SSE4_C(RsCsCalc_4x4);
@@ -1013,7 +1019,7 @@ void ASC::MotionAnalysis(ASCVidSample *videoIn, ASCVidSample *videoRef, mfxU32 *
         mfxU16 prevFPos = i << 4;
         for (mfxU16 j = 0; j < m_dataIn->layer[lyrIdx].Width_in_blocks; j++) {
             mfxU16 fPos = prevFPos + j;
-            acc += ME_simple(m_support, fPos, m_dataIn->layer, &videoIn->layer, referenceImageIn, true, m_dataIn, ME_SAD_8x8_Block_Search);
+            acc += ME_simple(m_support, fPos, m_dataIn->layer, &videoIn->layer, referenceImageIn, true, m_dataIn, ME_SAD_8x8_Block_Search, ME_SAD_8x8_Block, ME_VAR_8x8_Block);
             valb += videoIn->layer.SAD[fPos];
             *MVdiffVal += (videoIn->layer.pInteger[fPos].x - videoRef->layer.pInteger[fPos].x) * (videoIn->layer.pInteger[fPos].x - videoRef->layer.pInteger[fPos].x);
             *MVdiffVal += (videoIn->layer.pInteger[fPos].y - videoRef->layer.pInteger[fPos].y) * (videoIn->layer.pInteger[fPos].y - videoRef->layer.pInteger[fPos].y);
@@ -1114,11 +1120,27 @@ bool ASC::CompareStats(mfxU8 current, mfxU8 reference) {
     return Not_same;
 }
 
+bool ASC::DenoiseIFrameRec() {
+    bool
+        result = false;
+    mfxF64
+        c1 = 10.24346,
+        c0 = -11.5751,
+        x = (mfxF64)m_support->logic[ASCcurrent_frame_data]->SC,
+        y = (mfxF64)m_support->logic[ASCcurrent_frame_data]->avgVal;
+    result = ((c1 * std::log(x)) + c0) >= y;
+    return result;
+}
+
 bool ASC::FrameRepeatCheck() {
     mfxU8 reference = ASCprevious_frame_data;
     if (m_dataIn->interlaceMode > ASCprogressive_frame)
         reference = ASCprevious_previous_frame_data;
     return(CompareStats(ASCcurrent_frame_data, reference));
+}
+
+bool ASC::DoMCTFFilteringCheck() {
+    return true;
 }
 
 void ASC::DetectShotChangeFrame() {
@@ -1129,6 +1151,8 @@ void ASC::DetectShotChangeFrame() {
     m_support->logic[ASCcurrent_frame_data]->Rs = m_videoData[ASCCurrent_Frame]->layer.RsVal;
     m_support->logic[ASCcurrent_frame_data]->Cs = m_videoData[ASCCurrent_Frame]->layer.CsVal;
     m_support->logic[ASCcurrent_frame_data]->SC = m_videoData[ASCCurrent_Frame]->layer.RsVal + m_videoData[ASCCurrent_Frame]->layer.CsVal;
+    m_support->logic[ASCcurrent_frame_data]->doFilter_flag    = DoMCTFFilteringCheck();
+    m_support->logic[ASCcurrent_frame_data]->filterIntra_flag = DenoiseIFrameRec();
     if (m_support->firstFrame) {
         m_support->logic[ASCcurrent_frame_data]->TSC                = 0;
         m_support->logic[ASCcurrent_frame_data]->AFD                = 0;
@@ -1754,6 +1778,10 @@ ASC_API mfxI32 ASC::Get_frame_Temporal_complexity() {
         return 0;
 }
 
+ASC_API bool ASC::Get_intra_frame_denoise_recommendation() {
+    return m_support->logic[ASCprevious_frame_data]->filterIntra_flag;
+}
+
 ASC_API mfxU32 ASC::Get_PDist_advice() {
     if (m_dataReady)
         return m_support->logic[ASCprevious_frame_data]->pdist;
@@ -1773,6 +1801,9 @@ ASC_API bool ASC::Get_RepeatedFrame_advice() {
         return m_support->logic[ASCprevious_frame_data]->repeatedFrame;
     else
         return NULL;
+}
+ASC_API bool ASC::Get_Filter_advice() {
+    return m_support->logic[ASCprevious_frame_data]->doFilter_flag;
 }
 
 /**

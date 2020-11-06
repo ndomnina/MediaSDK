@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2019, Intel Corporation
+Copyright (c) 2005-2020, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -89,6 +89,8 @@ enum {
 
 #define MFX_CODEC_DUMP MFX_MAKEFOURCC('D','U','M','P')
 #define MFX_CODEC_RGB4 MFX_FOURCC_RGB4
+#define MFX_CODEC_NV12 MFX_FOURCC_NV12
+#define MFX_CODEC_I420 MFX_FOURCC_I420
 
 enum
 {
@@ -680,6 +682,8 @@ private:
             MFX_EXTBUFF_OPAQUE_SURFACE_ALLOCATION,
             MFX_EXTBUFF_FEI_PPS,
             MFX_EXTBUFF_FEI_SPS,
+            MFX_EXTBUFF_LOOKAHEAD_CTRL,
+            MFX_EXTBUFF_LOOKAHEAD_STAT
         };
 
         auto it = std::find_if(std::begin(allowed), std::end(allowed),
@@ -899,6 +903,7 @@ class CIVFFrameReader : public CSmplBitstreamReader
 {
 public:
     CIVFFrameReader();
+    virtual void      Reset();
     virtual mfxStatus Init(const msdk_char *strFileName);
     virtual mfxStatus ReadNextFrame(mfxBitstream *pBS);
 
@@ -928,6 +933,7 @@ protected:
         mfxU32 num_frames;
         mfxU32 unused;
     }m_hdr;
+    mfxStatus ReadHeader();
 };
 
 // writes bitstream to duplicate-file & supports joining
@@ -1164,7 +1170,6 @@ mfxU16 GetFreeSurfaceIndex(T* pSurfacesPool, mfxU16 nPoolSize)
             }
         }
     }
-
     return MSDK_INVALID_SURF_IDX;
 }
 

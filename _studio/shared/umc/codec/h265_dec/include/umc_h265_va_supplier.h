@@ -74,6 +74,8 @@ private:
     {
         return *this;
     }
+
+    const int SliceHeaderSize = DEFAULT_MAX_ENETRY_POINT_NUM * 4 + DEFAULT_MAX_PREVENTION_BYTES + DEAFULT_MAX_SLICE_HEADER_SIZE;
 };
 
 // this template class added to apply big surface pool workaround depends on platform

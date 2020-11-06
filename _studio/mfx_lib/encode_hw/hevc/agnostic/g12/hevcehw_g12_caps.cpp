@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Intel Corporation
+// Copyright (c) 2019-2020 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -36,35 +36,35 @@ void Caps::Query1NoCaps(const FeatureBlocks& /*blocks*/, TPushQ1 Push)
         MFX_CHECK(!bSet, MFX_ERR_NONE);
 
         defaults.GetMaxNumRef.Push([](
-            Gen9::Defaults::TChain<std::tuple<mfxU16, mfxU16>>::TExt
-            , const Gen9::Defaults::Param& dpar)
+            Base::Defaults::TChain<std::tuple<mfxU16, mfxU16, mfxU16>>::TExt
+            , const Base::Defaults::Param& dpar)
         {
-            const mfxU16 nRef[3][2][7] =
+            const mfxU16 nRef[2][3][7] =
             {
                 {   // VME
                     { 4, 4, 3, 3, 3, 1, 1 },
+                    { 4, 4, 3, 3, 3, 1, 1 },
                     { 2, 2, 1, 1, 1, 1, 1 }
                 },
-                {   // VDENC P
+                {   // VDENC
                     { 3, 3, 2, 2, 2, 1, 1 },
-                    { 3, 3, 2, 2, 2, 1, 1 }
-                },
-                {   // Gen12 VDENC RA B
                     { 2, 2, 1, 1, 1, 1, 1 },
                     { 1, 1, 1, 1, 1, 1, 1 }
                 }
             };
-            bool    bBFrames = (dpar.mvp.mfx.GopRefDist > 1);
-            bool    bVDEnc   = IsOn(dpar.mvp.mfx.LowPower);
-            mfxU16  tu       = dpar.mvp.mfx.TargetUsage;
-            mfxU32  idx      = bVDEnc * (1 + bBFrames);
+            bool    bVDEnc = IsOn(dpar.mvp.mfx.LowPower);
+            mfxU16  tu     = dpar.mvp.mfx.TargetUsage;
 
             CheckRangeOrSetDefault<mfxU16>(tu, 1, 7, 4);
             --tu;
 
+            /* Same way like on Base or Gen11 platforms */
+            mfxU16 numRefFrame = dpar.mvp.mfx.NumRefFrame + !dpar.mvp.mfx.NumRefFrame * 16;
+
             return std::make_tuple(
-                std::min<mfxU16>(nRef[idx][0][tu], dpar.caps.MaxNum_Reference0)
-                , std::min<mfxU16>(nRef[idx][1][tu], dpar.caps.MaxNum_Reference1));
+                std::min<mfxU16>(nRef[bVDEnc][0][tu], std::min<mfxU16>(dpar.caps.MaxNum_Reference0, numRefFrame))
+                , std::min<mfxU16>(nRef[bVDEnc][1][tu], std::min<mfxU16>(dpar.caps.MaxNum_Reference0, numRefFrame))
+                , std::min<mfxU16>(nRef[bVDEnc][2][tu], std::min<mfxU16>(dpar.caps.MaxNum_Reference1, numRefFrame)));
         });
 
         bSet = true;
@@ -80,10 +80,10 @@ void Caps::Query1WithCaps(const FeatureBlocks& /*blocks*/, TPushQ1 Push)
     {
         auto& caps = Glob::EncodeCaps::Get(strg);
 
-        caps.SliceIPOnly                = IsOn(par.mfx.LowPower) && (par.mfx.TargetUsage == 7);
+        caps.SliceIPOnly                = IsOn(par.mfx.LowPower) && (par.mfx.TargetUsage == 6 || par.mfx.TargetUsage == 7 || par.mfx.CodecProfile == MFX_PROFILE_HEVC_SCC);
         caps.msdk.bSingleSliceMultiTile = false;
 
-        caps.YUV422ReconSupport |= (!caps.Color420Only && IsOff(par.mfx.LowPower));
+        caps.YUV422ReconSupport &= (!caps.Color420Only && !IsOn(par.mfx.LowPower));
 
         SetSpecificCaps(caps);
 

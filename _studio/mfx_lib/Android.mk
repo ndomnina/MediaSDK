@@ -32,12 +32,10 @@ MFX_LOCAL_SRC_FILES_HW := \
 MFX_LOCAL_SRC_FILES_HW += $(addprefix mfx_lib/genx/h264_encode/isa/, \
     genx_simple_me_gen8_isa.cpp \
     genx_simple_me_gen9_isa.cpp \
-    genx_simple_me_gen10_isa.cpp \
     genx_simple_me_gen11_isa.cpp \
     genx_simple_me_gen11lp_isa.cpp \
     genx_simple_me_gen12lp_isa.cpp \
     genx_histogram_gen9_isa.cpp \
-    genx_histogram_gen10_isa.cpp \
     genx_histogram_gen11_isa.cpp \
     genx_histogram_gen11lp_isa.cpp \
     genx_histogram_gen12lp_isa.cpp)
@@ -45,35 +43,42 @@ MFX_LOCAL_SRC_FILES_HW += $(addprefix mfx_lib/genx/h264_encode/isa/, \
 MFX_LOCAL_SRC_FILES_HW += \
     mfx_lib/encode_hw/hevc/hevcehw_disp.cpp \
     mfx_lib/encode_hw/hevc/agnostic/hevcehw_base.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_alloc.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_constraints.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_dirty_rect.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_dpb_report.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_encoded_frame_info.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_ext_brc.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_hdr_sei.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_hrd.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_interlace.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_legacy.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_legacy_defaults.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_max_frame_size.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_packer.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_parser.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_roi.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_task.cpp \
-    mfx_lib/encode_hw/hevc/agnostic/g9/hevcehw_g9_weighted_prediction.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_impl.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_alloc.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_constraints.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_dirty_rect.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_dpb_report.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_encoded_frame_info.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_ext_brc.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_hdr_sei.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_hrd.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_interlace.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_legacy.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_legacy_defaults.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_max_frame_size.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_packer.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_parser.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_roi.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_task.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/base/hevcehw_base_weighted_prediction.cpp \
     mfx_lib/encode_hw/hevc/agnostic/g12/hevcehw_g12_caps.cpp \
     mfx_lib/encode_hw/hevc/agnostic/g12/hevcehw_g12_rext.cpp \
-    mfx_lib/encode_hw/hevc/linux/g9/hevcehw_g9_interlace_lin.cpp \
-    mfx_lib/encode_hw/hevc/linux/g9/hevcehw_g9_fei_lin.cpp \
-    mfx_lib/encode_hw/hevc/linux/g9/hevcehw_g9_lin.cpp \
-    mfx_lib/encode_hw/hevc/linux/g9/hevcehw_g9_roi_lin.cpp \
-    mfx_lib/encode_hw/hevc/linux/g9/hevcehw_g9_va_lin.cpp \
-    mfx_lib/encode_hw/hevc/linux/g9/hevcehw_g9_va_packer_lin.cpp \
-    mfx_lib/encode_hw/hevc/linux/g9/hevcehw_g9_weighted_prediction_lin.cpp \
+    mfx_lib/encode_hw/hevc/agnostic/g12/hevcehw_g12_scc.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_interlace_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_fei_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_dirty_rect_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_max_frame_size_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_roi_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_va_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_va_packer_lin.cpp \
+    mfx_lib/encode_hw/hevc/linux/base/hevcehw_base_weighted_prediction_lin.cpp \
     mfx_lib/encode_hw/hevc/linux/g12/hevcehw_g12_lin.cpp \
-    mfx_lib/encode_hw/hevc/linux/g12/hevcehw_g12_rext_lin.cpp
+    mfx_lib/encode_hw/hevc/linux/g12/hevcehw_g12_rext_lin.cpp \
+    mfx_lib/encode_hw/shared/ehw_resources_pool.cpp \
+    mfx_lib/encode_hw/shared/ehw_task_manager.cpp \
+    mfx_lib/encode_hw/shared/ehw_device_vaapi.cpp \
+    mfx_lib/encode_hw/shared/ehw_utils_vaapi.cpp
 
 MFX_LOCAL_INCLUDES := \
     $(foreach dir, $(MFX_LOCAL_DIRS), $(wildcard $(LOCAL_PATH)/mfx_lib/$(dir)/include))
@@ -93,11 +98,12 @@ MFX_LOCAL_INCLUDES_HW := \
     $(MFX_HOME)/_studio/shared/asc/include \
     $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc \
     $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/agnostic \
-    $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/agnostic/g9 \
+    $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/agnostic/base \
     $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/agnostic/g12 \
     $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/linux \
-    $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/linux/g9 \
-    $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/linux/g12
+    $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/linux/base \
+    $(MFX_HOME)/_studio/mfx_lib/encode_hw/hevc/linux/g12 \
+    $(MFX_HOME)/_studio/mfx_lib/encode_hw/shared
 
 MFX_LOCAL_STATIC_LIBRARIES_HW := \
     libmfx_lib_merged_hw \
@@ -153,7 +159,6 @@ MFX_SHARED_FILES_HW += $(addprefix mfx_lib/shared/src/, \
 MFX_SHARED_FILES_HW += $(addprefix mfx_lib/genx/asc/isa/, \
     genx_scd_gen8_isa.cpp \
     genx_scd_gen9_isa.cpp \
-    genx_scd_gen10_isa.cpp \
     genx_scd_gen11_isa.cpp \
     genx_scd_gen11lp_isa.cpp \
     genx_scd_gen12lp_isa.cpp)
@@ -161,7 +166,6 @@ MFX_SHARED_FILES_HW += $(addprefix mfx_lib/genx/asc/isa/, \
 MFX_SHARED_FILES_HW += $(addprefix mfx_lib/genx/copy_kernels/isa/, \
     genx_copy_kernel_gen8_isa.cpp \
     genx_copy_kernel_gen9_isa.cpp \
-    genx_copy_kernel_gen10_isa.cpp \
     genx_copy_kernel_gen11_isa.cpp \
     genx_copy_kernel_gen11lp_isa.cpp \
     genx_copy_kernel_gen12lp_isa.cpp)
@@ -169,7 +173,6 @@ MFX_SHARED_FILES_HW += $(addprefix mfx_lib/genx/copy_kernels/isa/, \
 MFX_SHARED_FILES_HW += $(addprefix mfx_lib/genx/field_copy/isa/, \
     genx_fcopy_gen8_isa.cpp \
     genx_fcopy_gen9_isa.cpp \
-    genx_fcopy_gen10_isa.cpp \
     genx_fcopy_gen11_isa.cpp \
     genx_fcopy_gen11lp_isa.cpp \
     genx_fcopy_gen12lp_isa.cpp)
@@ -208,6 +211,9 @@ MFX_LIB_SHARED_FILES_1 := $(addprefix mfx_lib/shared/src/, \
 
 MFX_LIB_SHARED_FILES_2 := $(addprefix shared/src/, \
     cm_mem_copy.cpp \
+    fast_copy.cpp \
+    fast_copy_c_impl.cpp \
+    fast_copy_sse4_impl.cpp \
     mfx_vpp_vaapi.cpp \
     libmfx_allocator.cpp \
     libmfx_allocator_vaapi.cpp \
@@ -235,7 +241,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CFLAGS := \
     $(MFX_CFLAGS_INTERNAL_HW) \
-    -Wall -Werror
+    -Wall -Werror -Wno-unused-parameter
 LOCAL_CFLAGS_32 := $(MFX_CFLAGS_INTERNAL_32)
 LOCAL_CFLAGS_64 := $(MFX_CFLAGS_INTERNAL_64)
 
@@ -260,7 +266,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CFLAGS := \
     $(MFX_CFLAGS_INTERNAL_HW) \
-    -Wall -Werror
+    -Wall -Werror -Wno-unused-parameter
 LOCAL_CFLAGS_32 := $(MFX_CFLAGS_INTERNAL_32)
 
 LOCAL_LDFLAGS := $(MFX_LOCAL_LDFLAGS_HW)
@@ -294,7 +300,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_CFLAGS := \
     $(MFX_CFLAGS_INTERNAL_HW) \
-    -Wall -Werror
+    -Wall -Werror -Wno-unused-parameter
 LOCAL_CFLAGS_64 := $(MFX_CFLAGS_INTERNAL_64)
 
 LOCAL_LDFLAGS := $(MFX_LOCAL_LDFLAGS_HW)

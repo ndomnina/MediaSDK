@@ -46,11 +46,11 @@ namespace MPEG2EncoderHW
     {
         ENCODE_CAPS hwCaps {};
 
-        mfxU8 CodecProfileType = par->mfx.CodecProfile;
-
-        mfxStatus sts = MfxHwMpeg2Encode::QueryHwCaps(core, hwCaps, CodecProfileType);
-        if (sts != MFX_ERR_NONE)
-            return MFX_WRN_PARTIAL_ACCELERATION;
+        mfxU16 codecProfile = MFX_PROFILE_MPEG2_MAIN;
+        if (par->mfx.CodecProfile != MFX_PROFILE_UNKNOWN)
+            codecProfile = par->mfx.CodecProfile;
+        mfxStatus sts = MfxHwMpeg2Encode::QueryHwCaps(core, hwCaps, codecProfile);
+        MFX_CHECK_STS(sts);
 
         if (par->mfx.FrameInfo.Width  > hwCaps.MaxPicWidth ||
             par->mfx.FrameInfo.Height > hwCaps.MaxPicHeight)
@@ -822,6 +822,15 @@ namespace MPEG2EncoderHW
                 out->mfx.CodecLevel = MFX_LEVEL_UNKNOWN;
                 bWarning = true;
             }
+            if (CorrectProfileLevelMpeg2(out->mfx.CodecProfile, out->mfx.CodecLevel,
+                out->mfx.FrameInfo.Width, out->mfx.FrameInfo.Height,
+                CalculateUMCFramerate(out->mfx.FrameInfo.FrameRateExtN, out->mfx.FrameInfo.FrameRateExtD),
+                out->mfx.RateControlMethod == MFX_RATECONTROL_CQP ? 0 : (mfxU32)(out->mfx.TargetKbps * out->mfx.BRCParamMultiplier * BRC_BITS_IN_KBIT),
+                out->mfx.GopRefDist))
+            {
+                bWarning = true;
+            }
+
             if (bAVBR_WA)
             {
                 bWarning = AVBR_via_CBR(out) ? true : bWarning;

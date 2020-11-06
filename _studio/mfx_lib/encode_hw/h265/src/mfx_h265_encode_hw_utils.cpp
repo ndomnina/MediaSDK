@@ -892,9 +892,7 @@ mfxStatus MfxVideoParam::GetExtBuffers(mfxVideoParam& par, bool query)
     ExtBuffer::Set(par, m_ext.CO3);
     ExtBuffer::Set(par, m_ext.ResetOpt);
 
-    if (ExtBuffer::Set(par, m_ext.DDI))
-    {
-    }
+    ExtBuffer::Set(par, m_ext.DDI);
     ExtBuffer::Set(par, m_ext.AVCTL);
     ExtBuffer::Set(par, m_ext.ROI);
     ExtBuffer::Set(par, m_ext.VSI);
@@ -1531,7 +1529,7 @@ void MfxVideoParam::SyncMfxToHeadersParam(mfxU32 numSlicesForSTRPSOpt)
     general.progressive_source_flag     = !!(mfx.FrameInfo.PicStruct & MFX_PICSTRUCT_PROGRESSIVE);
     general.interlaced_source_flag      = !(mfx.FrameInfo.PicStruct & MFX_PICSTRUCT_PROGRESSIVE);
     general.non_packed_constraint_flag  = 0;
-    general.frame_only_constraint_flag  = 0;
+    general.frame_only_constraint_flag  = !(mfx.FrameInfo.PicStruct & MFX_PICSTRUCT_FIELD_SINGLE);;
     general.level_idc                   = (mfxU8)(mfx.CodecLevel & 0xFF) * 3;
 
     if (mfx.CodecProfile == MFX_PROFILE_HEVC_REXT
@@ -1747,6 +1745,28 @@ void MfxVideoParam::SyncMfxToHeadersParam(mfxU32 numSlicesForSTRPSOpt)
 
     m_sps.temporal_mvp_enabled_flag             = 1; // SKL ?
     m_sps.strong_intra_smoothing_enabled_flag   = 0; // SKL
+
+    // QpModulation support
+    if (m_platform >= MFX_HW_ICL)
+    {
+        if (mfx.GopRefDist == 1)
+            m_sps.low_delay_mode = 1;
+
+        if (m_platform < MFX_HW_TGL_LP)
+        {
+            if ((m_ext.CO2.BRefType == MFX_B_REF_PYRAMID) &&
+                ((mfx.GopRefDist == 4) || (mfx.GopRefDist == 8)))
+                m_sps.hierarchical_flag = 1;
+        }
+        else
+        {
+            if ((m_ext.CO2.BRefType == MFX_B_REF_PYRAMID) || (isTL() && NumTL() < 4))
+                m_sps.hierarchical_flag = 1;
+
+            if (IsOn(mfx.LowPower) && m_sps.low_delay_mode && m_sps.hierarchical_flag)
+                m_sps.gop_ref_dist = 1 << (NumTL() - 1); // distance between anchor frames for driver
+        }
+    }
 
     m_sps.vui_parameters_present_flag = 1;
 
@@ -1970,6 +1990,13 @@ void MfxVideoParam::SyncMfxToHeadersParam(mfxU32 numSlicesForSTRPSOpt)
     m_pps.deblocking_filter_control_present_flag  = 1;
     m_pps.deblocking_filter_disabled_flag = !!m_ext.CO2.DisableDeblockingIdc;
     m_pps.deblocking_filter_override_enabled_flag = 1; // to disable deblocking per frame
+#if MFX_VERSION >= MFX_VERSION_NEXT
+    if (!m_pps.deblocking_filter_disabled_flag)
+    {
+        m_pps.beta_offset_div2 = mfxI8(m_ext.CO3.DeblockingBetaOffset / 2);
+        m_pps.tc_offset_div2 = mfxI8(m_ext.CO3.DeblockingAlphaTcOffset / 2);
+    }
+#endif
 
     m_pps.scaling_list_data_present_flag              = 0;
     m_pps.lists_modification_present_flag             = 1;
@@ -2411,15 +2438,25 @@ mfxStatus MfxVideoParam::GetSliceHeader(Task const & task, Task const & prevTask
      if ( ext2 && ext2->DisableDeblockingIdc != m_ext.CO2.DisableDeblockingIdc && m_pps.deblocking_filter_override_enabled_flag)
      {
         s.deblocking_filter_disabled_flag = !!ext2->DisableDeblockingIdc;
+#if MFX_VERSION < MFX_VERSION_NEXT
         s.deblocking_filter_override_flag = (s.deblocking_filter_disabled_flag != m_pps.deblocking_filter_disabled_flag);
-
-        if (s.deblocking_filter_override_flag)
+#endif
+        if (s.deblocking_filter_disabled_flag != m_pps.deblocking_filter_disabled_flag)
         {
             s.beta_offset_div2 = 0;
             s.tc_offset_div2 = 0;
         }
      }
-
+#if MFX_VERSION >= MFX_VERSION_NEXT
+     mfxExtCodingOption3 *ext3 = ExtBuffer::Get(task.m_ctrl);
+     if (ext3 && (ext3->DeblockingAlphaTcOffset != m_ext.CO3.DeblockingAlphaTcOffset || ext3->DeblockingBetaOffset != m_ext.CO3.DeblockingBetaOffset)
+              && m_pps.deblocking_filter_override_enabled_flag && !s.deblocking_filter_disabled_flag)
+     {
+         s.beta_offset_div2 = mfxI8(ext3->DeblockingBetaOffset / 2);
+         s.tc_offset_div2 = mfxI8(ext3->DeblockingAlphaTcOffset / 2);
+     }
+    s.deblocking_filter_override_flag = s.deblocking_filter_disabled_flag || s.beta_offset_div2 || s.tc_offset_div2;
+#endif
     s.loop_filter_across_slices_enabled_flag = m_pps.loop_filter_across_slices_enabled_flag;
 
     if (m_pps.tiles_enabled_flag || m_pps.entropy_coding_sync_enabled_flag)
@@ -2790,9 +2827,10 @@ mfxU8 GetFrameType(
         return (MFX_FRAMETYPE_P | MFX_FRAMETYPE_REF);
 
     //if ((gopOptFlag & MFX_GOP_STRICT) == 0)
-        if (((fo + 1) % gopPicSize == 0 && (gopOptFlag & MFX_GOP_CLOSED)) ||
-            (idrPicDist && (fo + 1) % idrPicDist == 0))
-            return (MFX_FRAMETYPE_P | MFX_FRAMETYPE_REF); // switch last B frame to P frame
+    if (((fo + 1) % gopPicSize == 0 && (gopOptFlag & MFX_GOP_CLOSED)) ||
+        (idrPicDist && (fo + 1) % idrPicDist == 0)) {
+        return (MFX_FRAMETYPE_P | MFX_FRAMETYPE_REF); // switch last B frame to P frame
+    }
 
 
     return (MFX_FRAMETYPE_B);
@@ -2819,8 +2857,9 @@ void InitDPB(
     Task const &  prevTask,
     mfxExtAVCRefListCtrl * pLCtrl)
 {
-    if (   task.m_poc > task.m_lastRAP
-        && prevTask.m_poc <= prevTask.m_lastRAP) // 1st TRAIL
+    if ((task.m_poc > task.m_lastRAP && prevTask.m_poc <= prevTask.m_lastRAP) // 1st TRAIL
+        || (task.m_IRState.refrType && !task.m_IRState.firstFrameInCycle) // IntRefCycle
+        || (!task.m_IRState.refrType && prevTask.m_IRState.refrType)) // First frame after IntRefCycle
     {
         std::fill(std::begin(task.m_dpb[TASK_DPB_ACTIVE]), std::end(task.m_dpb[TASK_DPB_ACTIVE]), DpbFrame());
 
@@ -2829,7 +2868,13 @@ void InitDPB(
         {
             const DpbFrame& ref = prevTask.m_dpb[TASK_DPB_AFTER][i];
 
-            if (ref.m_poc == task.m_lastRAP || ref.m_ltr)
+            if (task.m_IRState.refrType
+                || (!task.m_IRState.refrType && prevTask.m_IRState.refrType)) // disable multiref within IntraRefCycle and next frame
+            {
+                if (ref.m_poc > task.m_dpb[TASK_DPB_ACTIVE][0].m_poc) // initial m_poc = -1
+                    task.m_dpb[TASK_DPB_ACTIVE][0] = ref;
+            }
+            else if (ref.m_poc == task.m_lastRAP || ref.m_ltr)
                 task.m_dpb[TASK_DPB_ACTIVE][j++] = ref;
         }
     }
@@ -3163,10 +3208,10 @@ void ConstructRPL(
 
             }
 
-            // reorder STRs to POC descending order
-            for (mfxU8 lx = 0; lx < 2; lx++)
-                MFX_SORT_COMMON(RPL[lx], numRefActive[lx],
-                    DPB[RPL[lx][_i]].m_poc < DPB[RPL[lx][_j]].m_poc);
+            // reorder STRs to POC descending order for L0
+            MFX_SORT_COMMON(RPL[0], numRefActive[0], DPB[RPL[0][_i]].m_poc < DPB[RPL[0][_j]].m_poc);
+            // reorder STRs to POC asscending order for L1
+            MFX_SORT_COMMON(RPL[1], numRefActive[1], DPB[RPL[1][_i]].m_poc > DPB[RPL[1][_j]].m_poc);
 
             if (nLTR)
             {

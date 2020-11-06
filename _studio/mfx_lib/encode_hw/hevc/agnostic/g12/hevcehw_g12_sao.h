@@ -1,4 +1,4 @@
-// Copyright (c) 2019 Intel Corporation
+// Copyright (c) 2019-2020 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -55,19 +55,14 @@ protected:
             MFX_CHECK(!bSet, MFX_ERR_NONE);
 
             defaults.CheckSAO.Push([](
-                Gen9::Defaults::TCheckAndFix::TExt
-                , const Gen9::Defaults::Param& defPar
+                Base::Defaults::TCheckAndFix::TExt
+                , const Base::Defaults::Param& defPar
                 , mfxVideoParam& par)
             {
                 mfxExtHEVCParam* pHEVC = ExtBuffer::Get(par);
                 MFX_CHECK(pHEVC, MFX_ERR_NONE);
 
-                mfxExtCodingOption3* pCO3 = ExtBuffer::Get(par);
-
-                bool bNoSAO =
-                    (pCO3 && pCO3->WeightedPred == MFX_WEIGHTED_PRED_EXPLICIT)
-                    || (pCO3 && pCO3->WeightedBiPred == MFX_WEIGHTED_PRED_EXPLICIT)
-                    || defPar.base.GetLCUSize(defPar) == 16;
+                bool bNoSAO = defPar.base.GetLCUSize(defPar) == 16;
 
                 bool bChanged = CheckOrZero<mfxU16>(
                     pHEVC->SampleAdaptiveOffset
@@ -77,7 +72,7 @@ protected:
                     , mfxU16(!bNoSAO * MFX_SAO_ENABLE_CHROMA)
                     , mfxU16(!bNoSAO * (MFX_SAO_ENABLE_LUMA | MFX_SAO_ENABLE_CHROMA)));
 
-                MFX_CHECK(!bChanged, MFX_ERR_UNSUPPORTED);
+                MFX_CHECK(!bChanged, MFX_WRN_INCOMPATIBLE_VIDEO_PARAM);
                 return MFX_ERR_NONE;
             });
 

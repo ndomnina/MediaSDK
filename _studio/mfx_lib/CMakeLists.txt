@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2019 Intel Corporation
+# Copyright (c) 2018-2020 Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@ mfx_include_dirs()
 set(MFX_ORIG_LDFLAGS "${MFX_LDFLAGS}" )
 
 ### CM
+include_directories( ${MSDK_STUDIO_ROOT}/enctools/include )
 include_directories( ${MSDK_LIB_ROOT}/cmrt_cross_platform/include )
 set( SRC_DIR "${MSDK_LIB_ROOT}/cmrt_cross_platform/src" )
 set( defs "" )
@@ -43,7 +44,6 @@ foreach( prefix ${MSDK_LIB_ROOT}/shared/src )
     ${prefix}/mfx_brc_common.cpp
     ${prefix}/mfx_common_decode_int.cpp
     ${prefix}/mfx_common_int.cpp
-    ${prefix}/mfx_enc_common.cpp
     ${prefix}/mfx_critical_error_handler.cpp
     ${prefix}/mfx_vpx_dec_common.cpp
   )
@@ -55,6 +55,7 @@ append_property( mfx_common COMPILE_FLAGS " -DMFX_RT" )
 
 foreach( prefix ${MSDK_LIB_ROOT}/shared/src )
   list( APPEND sources
+    ${prefix}/mfx_enc_common.cpp
     ${prefix}/mfx_ddi_enc_dump.cpp
     ${prefix}/mfx_h264_enc_common_hw.cpp
     ${prefix}/mfx_h264_encode_vaapi.cpp
@@ -71,8 +72,8 @@ append_property( mfx_common_hw COMPILE_FLAGS " -DMFX_RT" )
 
 ### libmfxhw
 list( APPEND mdirs
-  scheduler vpp decode/vc1
-  decode/mjpeg decode/h264 decode/mpeg2 cmrt_cross_platform
+  scheduler/linux vpp decode/vc1
+  decode/mjpeg decode/h264 decode/mpeg2 decode/av1 cmrt_cross_platform
   encode_hw/vp9 encode_hw/h265 encode_hw/h264 encode_hw/mpeg2 encode_hw/mjpeg
   encode/mjpeg
   decode/h265 decode/vp8 decode/vp9 mctf_package/mctf
@@ -101,7 +102,7 @@ endforeach()
 
 set( sources "" )
 set( sources.plus "" )
-file( GLOB_RECURSE srcs "${MSDK_LIB_ROOT}/scheduler/src/*.cpp" )
+file( GLOB_RECURSE srcs "${MSDK_LIB_ROOT}/scheduler/linux/src/*.cpp" )
 list( APPEND sources ${srcs})
 # =============================================================================
 
@@ -127,8 +128,15 @@ foreach( prefix ${MSDK_LIB_ROOT}/shared/src )
   )
 endforeach()
 foreach( prefix ${MSDK_STUDIO_ROOT}/shared/src )
+
+  add_library(fast_copy_sse4 OBJECT ${prefix}/fast_copy_sse4_impl.cpp)
+  target_compile_options(fast_copy_sse4 PRIVATE -msse4.1)
+  configure_build_variant(fast_copy_sse4 none)
+
   list( APPEND sources
     ${prefix}/cm_mem_copy.cpp
+    ${prefix}/fast_copy_c_impl.cpp
+    ${prefix}/fast_copy.cpp
     ${prefix}/mfx_vpp_vaapi.cpp
     ${prefix}/libmfx_allocator.cpp
     ${prefix}/libmfx_allocator_vaapi.cpp
@@ -140,6 +148,7 @@ foreach( prefix ${MSDK_STUDIO_ROOT}/shared/src )
     ${prefix}/mfx_umc_mjpeg_vpp.cpp
     ${prefix}/mfx_static_assert_structs.cpp
     ${prefix}/mfx_mfe_adapter.cpp
+    $<TARGET_OBJECTS:fast_copy_sse4>
   )
 endforeach()
 
@@ -194,6 +203,7 @@ list( APPEND LIBS
   h264_la
   ${GENX_LIB}
   mfx_common
+  enctools_hw  
   mfx_common_hw
   ${ASC_LIB}
   ${MCTF_LIB}
@@ -207,7 +217,6 @@ list( APPEND LIBS
   pthread
   dl
 )
-
 make_library( ${mfxlibname} hw shared )
 make_library( mfxhw_static hw static )
 

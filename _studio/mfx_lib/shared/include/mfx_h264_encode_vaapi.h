@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 Intel Corporation
+// Copyright (c) 2018-2020 Intel Corporation
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -84,7 +84,7 @@ mfxStatus SetRoundingOffset(
 namespace MfxHwH264Encode
 {
     // map feedbackNumber <-> VASurface
-    typedef struct
+    struct ExtVASurface
     {
         VASurfaceID surface = VA_INVALID_SURFACE;
         mfxU32 number       = 0;
@@ -95,7 +95,7 @@ namespace MfxHwH264Encode
         VASurfaceID mbstat  = VA_INVALID_ID;
         VASurfaceID mbcode  = VA_INVALID_ID;
 #endif
-    } ExtVASurface;
+    };
 
     void UpdatePPS(
         DdiTask const & task,
@@ -127,27 +127,21 @@ namespace MfxHwH264Encode
             GUID       guid,
             mfxU32     width,
             mfxU32     height,
-            bool       isTemporal = false);
+            bool       isTemporal = false) override;
 
         virtual
         mfxStatus CreateAccelerationService(
-            MfxVideoParam const & par);
+            MfxVideoParam const & par) override;
 
         virtual
         mfxStatus Reset(
-            MfxVideoParam const & par);
-
-        // empty  for Lin
-        virtual
-        mfxStatus Register(
-            mfxMemId memId,
-            D3DDDIFORMAT type);
+            MfxVideoParam const & par) override;
 
         // 2 -> 1
         virtual
         mfxStatus Register(
             mfxFrameAllocResponse& response,
-            D3DDDIFORMAT type);
+            D3DDDIFORMAT type) override;
 
         // (mfxExecuteBuffers& data)
         virtual
@@ -155,27 +149,27 @@ namespace MfxHwH264Encode
             mfxHDLPair      pair,
             DdiTask const & task,
             mfxU32          fieldId,
-            PreAllocatedVector const & sei);
+            PreAllocatedVector const & sei) override;
 
         // recomendation from HW
         virtual
         mfxStatus QueryCompBufferInfo(
             D3DDDIFORMAT type,
-            mfxFrameAllocRequest& request);
+            mfxFrameAllocRequest& request) override;
 
         virtual
         mfxStatus QueryEncodeCaps(
-            MFX_ENCODE_CAPS& caps);
+            MFX_ENCODE_CAPS& caps) override;
 
         virtual
         mfxStatus QueryMbPerSec(
             mfxVideoParam const & par,
-            mfxU32              (&mbPerSec)[16]);
+            mfxU32              (&mbPerSec)[16]) override;
 
         virtual
         mfxStatus QueryStatus(
             DdiTask & task,
-            mfxU32    fieldId);
+            mfxU32    fieldId) override;
 
         virtual
         mfxStatus QueryStatusFEI(
@@ -185,9 +179,9 @@ namespace MfxHwH264Encode
             mfxU32 codedStatus);
 
         virtual
-        mfxStatus Destroy();
+        mfxStatus Destroy() override;
 
-        void ForceCodingFunction (mfxU16 /*codingFunction*/)
+        void ForceCodingFunction (mfxU16 /*codingFunction*/) override
         {
             // no need in it on Linux
         }
@@ -196,12 +190,12 @@ namespace MfxHwH264Encode
         mfxStatus QueryHWGUID(
             VideoCORE * core,
             GUID        guid,
-            bool        isTemporal);
+            bool        isTemporal) override;
+
+        VAAPIEncoder(const VAAPIEncoder&) = delete;
+        VAAPIEncoder& operator=(const VAAPIEncoder&) = delete;
 
     protected:
-        VAAPIEncoder(const VAAPIEncoder&); // no implementation
-        VAAPIEncoder& operator=(const VAAPIEncoder&); // no implementation
-
         void FillSps( MfxVideoParam const & par, VAEncSequenceParameterBufferH264 & sps);
 
         VideoCORE*    m_core;
@@ -215,6 +209,7 @@ namespace MfxHwH264Encode
         // encode params (extended structures)
         VAEncSequenceParameterBufferH264 m_sps;
         VAEncPictureParameterBufferH264  m_pps;
+        VAContextParameterUpdateBuffer   m_priorityBuffer;
         std::vector<VAEncSliceParameterBufferH264> m_slice;
 
         // encode buffer to send vaRender()
@@ -229,6 +224,7 @@ namespace MfxHwH264Encode
         VABufferID m_rirId;                     // VAEncMiscParameterRIR
         VABufferID m_qualityParamsId;           // VAEncMiscParameterEncQuality
         VABufferID m_miscParameterSkipBufferId; // VAEncMiscParameterSkipFrame
+        VABufferID m_maxSliceSizeId;            // VAEncMiscParameterMaxSliceSize
 #if defined (MFX_ENABLE_H264_ROUNDING_OFFSET)
         VABufferID m_roundingOffsetId;          // VAEncMiscParameterCustomRoundingControl
 #endif
@@ -248,6 +244,7 @@ namespace MfxHwH264Encode
         VABufferID m_packedSeiBufferId;
         VABufferID m_packedSkippedSliceHeaderBufferId;
         VABufferID m_packedSkippedSliceBufferId;
+        VABufferID m_priorityBufferId;
         std::vector<VABufferID> m_packedSliceHeaderBufferId;
         std::vector<VABufferID> m_packedSliceBufferId;
         std::vector<VABufferID> m_packedSvcPrefixHeaderBufferId;
@@ -282,7 +279,7 @@ namespace MfxHwH264Encode
 
         std::vector<VAEncROI> m_arrayVAEncROI;
 
-        static const mfxU32 MAX_CONFIG_BUFFERS_COUNT = 29 + 5; //added FEI buffers
+        static const mfxU32 MAX_CONFIG_BUFFERS_COUNT = 30 + 5; //added FEI buffers
 
         UMC::Mutex m_guard;
         HeaderPacker m_headerPacker;
@@ -298,6 +295,7 @@ namespace MfxHwH264Encode
         mfxU32 m_skipMode;
         bool m_isENCPAK;
 
+        bool                           m_isBrcResetRequired;
         VAEncMiscParameterRateControl  m_vaBrcPar;
         VAEncMiscParameterFrameRate    m_vaFrameRate;
 
@@ -307,6 +305,7 @@ namespace MfxHwH264Encode
 #ifdef MFX_ENABLE_MFE
         MFEVAAPIEncoder*               m_mfe;
 #endif
+        mfxU32                         m_MaxContextPriority;
     };
 
     //extend encoder to FEI interface

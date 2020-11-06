@@ -1,15 +1,15 @@
-// Copyright (c) 2017 Intel Corporation
-// 
+// Copyright (c) 2017-2020 Intel Corporation
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -62,6 +62,7 @@ void H265Slice::Reset()
     }
 
     m_pCurrentFrame = 0;
+    m_NumEmuPrevnBytesInSliceHdr = 0;
 
     m_SliceHeader.nuh_temporal_id = 0;
     m_SliceHeader.m_CheckLDC = false;
@@ -165,40 +166,12 @@ bool H265Slice::DecodeSliceHeader(PocDecoding * pocDecoding)
         if (UMC::UMC_OK != umcRes)
             return false;
 
-        umcRes = m_BitStream.GetSliceHeaderFull(this, m_pSeqParamSet, m_pPicParamSet);
+        umcRes = m_BitStream.GetSliceHeaderFull(this, m_pSeqParamSet, m_pPicParamSet, pocDecoding);
 
         if (!GetSliceHeader()->dependent_slice_segment_flag)
         {
             if (!GetSliceHeader()->IdrPicFlag)
             {
-                int32_t PicOrderCntMsb;
-                int32_t slice_pic_order_cnt_lsb = m_SliceHeader.slice_pic_order_cnt_lsb;
-                int32_t MaxPicOrderCntLsb = 1<< GetSeqParam()->log2_max_pic_order_cnt_lsb;
-                int32_t prevPicOrderCntLsb = pocDecoding->prevPocPicOrderCntLsb;
-                int32_t prevPicOrderCntMsb = pocDecoding->prevPicOrderCntMsb;
-
-                if ( (slice_pic_order_cnt_lsb  <  prevPicOrderCntLsb) && ( (prevPicOrderCntLsb - slice_pic_order_cnt_lsb)  >=  (MaxPicOrderCntLsb / 2) ) )
-                {
-                    PicOrderCntMsb = prevPicOrderCntMsb + MaxPicOrderCntLsb;
-                }
-                else if ( (slice_pic_order_cnt_lsb  >  prevPicOrderCntLsb) && ( (slice_pic_order_cnt_lsb - prevPicOrderCntLsb)  >  (MaxPicOrderCntLsb / 2) ) )
-                {
-                    PicOrderCntMsb = prevPicOrderCntMsb - MaxPicOrderCntLsb;
-                }
-                else
-                {
-                    PicOrderCntMsb = prevPicOrderCntMsb;
-                }
-
-                if (m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_LP || m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_RADL ||
-                    m_SliceHeader.nal_unit_type == NAL_UT_CODED_SLICE_BLA_N_LP)
-                { // For BLA picture types, POCmsb is set to 0.
-
-                    PicOrderCntMsb = 0;
-                }
-
-                m_SliceHeader.slice_pic_order_cnt_lsb = PicOrderCntMsb + slice_pic_order_cnt_lsb;
-
                 const H265SeqParamSet * sps = m_pSeqParamSet;
                 H265SliceHeader * sliceHdr = &m_SliceHeader;
 
@@ -225,14 +198,14 @@ bool H265Slice::DecodeSliceHeader(PocDecoding * pocDecoding)
                             else
                                 DeltaPocMsbCycleLt = rps->delta_poc_msb_cycle_lt[j] + prevDeltaMSB;
 
-                            int32_t pocLTCurr = sliceHdr->slice_pic_order_cnt_lsb - DeltaPocMsbCycleLt * maxPicOrderCntLSB - slice_pic_order_cnt_lsb + pocLsbLt;
+                            int32_t pocLTCurr = sliceHdr->m_poc - DeltaPocMsbCycleLt * maxPicOrderCntLSB - sliceHdr->slice_pic_order_cnt_lsb + pocLsbLt;
                             rps->setPOC(j, pocLTCurr);
-                            rps->setDeltaPOC(j, - sliceHdr->slice_pic_order_cnt_lsb + pocLTCurr);
+                            rps->setDeltaPOC(j, - sliceHdr->m_poc + pocLTCurr);
                         }
                         else
                         {
                             rps->setPOC     (j, pocLsbLt);
-                            rps->setDeltaPOC(j, - sliceHdr->slice_pic_order_cnt_lsb + pocLsbLt);
+                            rps->setDeltaPOC(j, - sliceHdr->m_poc + pocLsbLt);
                             if (j == offset + rps->num_long_term_sps)
                                 DeltaPocMsbCycleLt = 0;
                         }
@@ -258,8 +231,8 @@ bool H265Slice::DecodeSliceHeader(PocDecoding * pocDecoding)
                 if (GetSliceHeader()->nuh_temporal_id == 0 && sliceHdr->nal_unit_type != NAL_UT_CODED_SLICE_RADL_R &&
                     sliceHdr->nal_unit_type != NAL_UT_CODED_SLICE_RASL_R && !IsSubLayerNonReference(sliceHdr->nal_unit_type))
                 {
-                    pocDecoding->prevPicOrderCntMsb = PicOrderCntMsb;
-                    pocDecoding->prevPocPicOrderCntLsb = slice_pic_order_cnt_lsb;
+                    pocDecoding->prevPicOrderCntMsb    = sliceHdr->m_poc - sliceHdr->slice_pic_order_cnt_lsb;
+                    pocDecoding->prevPocPicOrderCntLsb = sliceHdr->slice_pic_order_cnt_lsb;
                 }
             }
             else
@@ -288,6 +261,103 @@ bool H265Slice::DecodeSliceHeader(PocDecoding * pocDecoding)
 
 } // bool H265Slice::DecodeSliceHeader(bool bFullInitialization)
 
+// Get tile column CTB width
+uint32_t H265Slice::getTileColumnWidth(uint32_t col) const
+{
+    uint32_t tileColumnWidth = 0;
+    uint32_t lcuSize = 1 << m_pSeqParamSet->log2_max_luma_coding_block_size;
+    uint32_t widthInLcu = (m_pSeqParamSet->pic_width_in_luma_samples + lcuSize - 1) / lcuSize;
+
+    if (m_pPicParamSet->uniform_spacing_flag)
+    {
+        tileColumnWidth = ((col + 1) * widthInLcu) / m_pPicParamSet->num_tile_columns -
+            (col * widthInLcu) / m_pPicParamSet->num_tile_columns;
+    }
+    else
+    {
+        if (col == (m_pPicParamSet->num_tile_columns - 1))
+        {
+            for (uint32_t i = 0; i < (m_pPicParamSet->num_tile_columns - 1); i++)
+            {
+                tileColumnWidth += m_pPicParamSet->column_width[i];
+            }
+            tileColumnWidth = widthInLcu - tileColumnWidth;
+        }
+        else
+        {
+            tileColumnWidth = m_pPicParamSet->column_width[col];
+        }
+    }
+    return tileColumnWidth;
+}
+
+// Get tile row CTB height
+uint32_t H265Slice::getTileRowHeight(uint32_t row) const
+{
+    uint32_t tileRowHeight = 0;
+    uint32_t lcuSize = 1 << m_pSeqParamSet->log2_max_luma_coding_block_size;
+    uint32_t heightInLcu = (m_pSeqParamSet->pic_height_in_luma_samples + lcuSize - 1) / lcuSize;
+
+    if (m_pPicParamSet->uniform_spacing_flag)
+    {
+        tileRowHeight = ((row + 1) * heightInLcu) / m_pPicParamSet->num_tile_rows -
+            (row * heightInLcu) / m_pPicParamSet->num_tile_rows;
+    }
+    else
+    {
+        if (row == (m_pPicParamSet->num_tile_rows - 1))
+        {
+            for (uint32_t i = 0; i < (m_pPicParamSet->num_tile_rows - 1); i++)
+            {
+                tileRowHeight += m_pPicParamSet->row_height[i];
+            }
+            tileRowHeight = heightInLcu - tileRowHeight;
+        }
+        else
+        {
+            tileRowHeight = m_pPicParamSet->row_height[row];
+        }
+    }
+    return tileRowHeight;
+}
+
+// Get tile XIdx
+uint32_t H265Slice::getTileXIdx() const
+{
+    uint32_t i;
+    uint32_t lcuOffset = 0;
+    uint32_t lcuSize = 1 << m_pSeqParamSet->log2_max_luma_coding_block_size;
+    uint32_t widthInLcu = (m_pSeqParamSet->pic_width_in_luma_samples + lcuSize - 1) / lcuSize;
+    uint32_t lcuColumnOffset = m_SliceHeader.slice_segment_address % widthInLcu;
+
+    for (i = 0; i < (m_pPicParamSet->num_tile_columns-1); i++)
+    {
+        int tileColumnWidth = getTileColumnWidth(i);
+        if (lcuColumnOffset >= lcuOffset && lcuColumnOffset < lcuOffset + tileColumnWidth)
+            break;
+        lcuOffset += tileColumnWidth;
+    }
+    return i;
+}
+
+// Get tile YIdx
+uint32_t H265Slice::getTileYIdx() const
+{
+    uint32_t i;
+    uint32_t lcuOffset = 0;
+    uint32_t lcuSize = 1 << m_pSeqParamSet->log2_max_luma_coding_block_size;
+    uint32_t widthInLcu = (m_pSeqParamSet->pic_width_in_luma_samples + lcuSize - 1) / lcuSize;
+    uint32_t lcuRowOffset = m_SliceHeader.slice_segment_address / widthInLcu;
+
+    for (i = 0; i < (m_pPicParamSet->num_tile_rows - 1); i++)
+    {
+        int tileRowHeight = getTileRowHeight(i);
+        if (lcuRowOffset >= lcuOffset && lcuRowOffset < lcuOffset + tileRowHeight)
+            break;
+        lcuOffset += tileRowHeight;
+    }
+    return i;
+}
 
 // Returns number of used references in RPS
 int H265Slice::getNumRpsCurrTempList() const
@@ -297,17 +367,141 @@ int H265Slice::getNumRpsCurrTempList() const
   if (GetSliceHeader()->slice_type != I_SLICE)
   {
       const ReferencePictureSet *rps = getRPS();
+      bool intra_block_copy_flag = (GetPicParam()->pps_curr_pic_ref_enabled_flag != 0);
 
-      for(uint32_t i=0;i < rps->getNumberOfNegativePictures() + rps->getNumberOfPositivePictures() + rps->getNumberOfLongtermPictures();i++)
+      for (uint32_t i=0;i < rps->getNumberOfNegativePictures() + rps->getNumberOfPositivePictures() + rps->getNumberOfLongtermPictures();i++)
       {
-        if(rps->getUsed(i))
-        {
+          if (rps->getUsed(i))
+          {
+              numRpsCurrTempList++;
+          }
+      }
+
+      if (intra_block_copy_flag)
+      {
           numRpsCurrTempList++;
-        }
       }
   }
 
   return numRpsCurrTempList;
+}
+
+void H265Slice::setRefPOCListSliceHeader()
+{
+    int32_t  RefPicPOCSetStCurr0[MAX_NUM_REF_PICS] = {};
+    int32_t  RefPicPOCSetStCurr1[MAX_NUM_REF_PICS] = {};
+    int32_t  RefPicPOCSetLtCurr[MAX_NUM_REF_PICS]  = {};
+    uint32_t NumPicStCurr0 = 0;
+    uint32_t NumPicStCurr1 = 0;
+    uint32_t NumPicLtCurr  = 0;
+    uint32_t i;
+
+    if (m_SliceHeader.slice_type == I_SLICE)
+        return;
+
+    for (i = 0; i < getRPS()->getNumberOfNegativePictures(); i++)
+    {
+        if (getRPS()->getUsed(i))
+        {
+            RefPicPOCSetStCurr0[NumPicStCurr0] = m_SliceHeader.m_poc + getRPS()->getDeltaPOC(i);
+            NumPicStCurr0++;
+        }
+    }
+    m_SliceHeader.m_numPicStCurr0 = NumPicStCurr0;
+
+    for (; i < getRPS()->getNumberOfNegativePictures() + getRPS()->getNumberOfPositivePictures(); i++)
+    {
+        if (getRPS()->getUsed(i))
+        {
+            RefPicPOCSetStCurr1[NumPicStCurr1] = m_SliceHeader.m_poc + getRPS()->getDeltaPOC(i);
+            NumPicStCurr1++;
+        }
+    }
+    m_SliceHeader.m_numPicStCurr1 = NumPicStCurr1;
+
+    for (i = getRPS()->getNumberOfNegativePictures() + getRPS()->getNumberOfPositivePictures();
+        i < getRPS()->getNumberOfNegativePictures() + getRPS()->getNumberOfPositivePictures() + getRPS()->getNumberOfLongtermPictures(); i++)
+    {
+        if (getRPS()->getUsed(i))
+        {
+            RefPicPOCSetLtCurr[NumPicLtCurr] = getRPS()->getPOC(i);
+            NumPicLtCurr++;
+        }
+    }
+    m_SliceHeader.m_numPicLtCurr = NumPicLtCurr;
+
+    H265PicParamSet const* pps = GetPicParam();
+    VM_ASSERT(pps);
+
+    int32_t numPicTotalCurr = NumPicStCurr0 + NumPicStCurr1 + NumPicLtCurr;
+    if (pps->pps_curr_pic_ref_enabled_flag)
+        numPicTotalCurr++;
+
+    int32_t cIdx = 0;
+    int32_t rIdx = 0;
+    for (i = 0; i < NumPicStCurr0; cIdx++, i++)
+    {
+        m_SliceHeader.m_RpsPOCCurrList0[cIdx] = RefPicPOCSetStCurr0[i];
+    }
+    for (i = 0; i < NumPicStCurr1; cIdx++, i++)
+    {
+        m_SliceHeader.m_RpsPOCCurrList0[cIdx] = RefPicPOCSetStCurr1[i];
+    }
+    for (i = 0; i < NumPicLtCurr; cIdx++, i++)
+    {
+        m_SliceHeader.m_RpsPOCCurrList0[cIdx] = RefPicPOCSetLtCurr[i];
+    }
+    if (pps->pps_curr_pic_ref_enabled_flag)
+        m_SliceHeader.m_RpsPOCCurrList0[cIdx++] = m_SliceHeader.m_poc;
+
+    int32_t rpsPOCCurrList1[MAX_NUM_REF_PICS + 1] = {};
+    if (m_SliceHeader.slice_type == B_SLICE)
+    {
+        cIdx = 0;
+        for (i = 0; i < NumPicStCurr1; cIdx++, i++)
+        {
+            rpsPOCCurrList1[cIdx] = RefPicPOCSetStCurr1[i];
+        }
+        for (i = 0; i < NumPicStCurr0; cIdx++, i++)
+        {
+            rpsPOCCurrList1[cIdx] = RefPicPOCSetStCurr0[i];
+        }
+        for (i = 0; i < NumPicLtCurr; cIdx++, i++)
+        {
+            rpsPOCCurrList1[cIdx] = RefPicPOCSetLtCurr[i];
+        }
+        if (pps->pps_curr_pic_ref_enabled_flag)
+            rpsPOCCurrList1[cIdx++] = m_SliceHeader.m_poc;
+    }
+
+    RefPicListModification &refPicListModification = m_SliceHeader.m_RefPicListModification;
+
+    for (rIdx = 0; rIdx <= m_SliceHeader.m_numRefIdx[0] - 1; rIdx++)
+    {
+        cIdx = refPicListModification.ref_pic_list_modification_flag_l0 ? refPicListModification.list_entry_l0[rIdx] : rIdx % numPicTotalCurr;
+        m_SliceHeader.m_RefPOCList[0][rIdx] = m_SliceHeader.m_RpsPOCCurrList0[cIdx];
+    }
+
+    int32_t const numRpsCurrTempList0 = (std::max)(m_SliceHeader.m_numRefIdx[0], numPicTotalCurr);
+    if (pps->pps_curr_pic_ref_enabled_flag &&
+        !refPicListModification.ref_pic_list_modification_flag_l0 &&
+        numRpsCurrTempList0 > m_SliceHeader.m_numRefIdx[0])
+    {
+        m_SliceHeader.m_RefPOCList[0][m_SliceHeader.m_numRefIdx[0] - 1] = m_SliceHeader.m_poc;
+    }
+
+    if (m_SliceHeader.slice_type == P_SLICE)
+    {
+        m_SliceHeader.m_numRefIdx[1] = 0;
+    }
+    else
+    {
+        for (rIdx = 0; rIdx <= m_SliceHeader.m_numRefIdx[1] - 1; rIdx++)
+        {
+            cIdx = refPicListModification.ref_pic_list_modification_flag_l1 ? refPicListModification.list_entry_l1[rIdx] : rIdx % numPicTotalCurr;
+            m_SliceHeader.m_RefPOCList[1][rIdx] = rpsPOCCurrList1[cIdx];
+        }
+    }
 }
 
 // For dependent slice copy data from another slice
@@ -321,50 +515,54 @@ void H265Slice::CopyFromBaseSlice(const H265Slice * s)
 
     const H265SliceHeader * slice = s->GetSliceHeader();
 
-    m_SliceHeader.IdrPicFlag = slice->IdrPicFlag;
-    m_SliceHeader.slice_pic_order_cnt_lsb = slice->slice_pic_order_cnt_lsb;
+    m_SliceHeader.IdrPicFlag    = slice->IdrPicFlag;
+    m_SliceHeader.m_poc         = slice->m_poc;
     m_SliceHeader.nal_unit_type = slice->nal_unit_type;
-    m_SliceHeader.SliceQP = slice->SliceQP;
+    m_SliceHeader.SliceQP       = slice->SliceQP;
 
-    m_SliceHeader.slice_deblocking_filter_disabled_flag   = slice->slice_deblocking_filter_disabled_flag;
-    m_SliceHeader.deblocking_filter_override_flag = slice->deblocking_filter_override_flag;
+    m_SliceHeader.slice_deblocking_filter_disabled_flag = slice->slice_deblocking_filter_disabled_flag;
+    m_SliceHeader.deblocking_filter_override_flag       = slice->deblocking_filter_override_flag;
     m_SliceHeader.slice_beta_offset = slice->slice_beta_offset;
-    m_SliceHeader.slice_tc_offset = slice->slice_tc_offset;
+    m_SliceHeader.slice_tc_offset   = slice->slice_tc_offset;
 
     for (int32_t i = 0; i < 3; i++)
     {
         m_SliceHeader.m_numRefIdx[i]     = slice->m_numRefIdx[i];
     }
 
-    m_SliceHeader.m_CheckLDC            = slice->m_CheckLDC;
-    m_SliceHeader.slice_type            = slice->slice_type;
-    m_SliceHeader.slice_qp_delta        = slice->slice_qp_delta;
-    m_SliceHeader.slice_cb_qp_offset    = slice->slice_cb_qp_offset;
-    m_SliceHeader.slice_cr_qp_offset    = slice->slice_cr_qp_offset;
+    m_SliceHeader.m_CheckLDC             = slice->m_CheckLDC;
+    m_SliceHeader.slice_type             = slice->slice_type;
+    m_SliceHeader.slice_qp_delta         = slice->slice_qp_delta;
+    m_SliceHeader.slice_cb_qp_offset     = slice->slice_cb_qp_offset;
+    m_SliceHeader.slice_cr_qp_offset     = slice->slice_cr_qp_offset;
+    m_SliceHeader.slice_act_y_qp_offset  = slice->slice_act_y_qp_offset;
+    m_SliceHeader.slice_act_cb_qp_offset = slice->slice_act_cb_qp_offset;
+    m_SliceHeader.slice_act_cr_qp_offset = slice->slice_act_cr_qp_offset;
 
-    m_SliceHeader.m_rps                     = slice->m_rps;
-    m_SliceHeader.collocated_from_l0_flag   = slice->collocated_from_l0_flag;
-    m_SliceHeader.collocated_ref_idx        = slice->collocated_ref_idx;
-    m_SliceHeader.nuh_temporal_id           = slice->nuh_temporal_id;
+    m_SliceHeader.m_rps                   = slice->m_rps;
+    m_SliceHeader.collocated_from_l0_flag = slice->collocated_from_l0_flag;
+    m_SliceHeader.collocated_ref_idx      = slice->collocated_ref_idx;
+    m_SliceHeader.nuh_temporal_id         = slice->nuh_temporal_id;
 
-    for ( int32_t e = 0; e < 2; e++ )
+    for (int32_t e = 0; e < 2; e++)
     {
-        for ( int32_t n = 0; n < MAX_NUM_REF_PICS; n++ )
+        for (int32_t n = 0; n < MAX_NUM_REF_PICS; n++)
         {
-            MFX_INTERNAL_CPY(m_SliceHeader.pred_weight_table[e][n], slice->pred_weight_table[e][n], sizeof(wpScalingParam)*3);
+            MFX_INTERNAL_CPY(m_SliceHeader.pred_weight_table[e][n], slice->pred_weight_table[e][n], sizeof(wpScalingParam) * 3);
         }
     }
 
-    m_SliceHeader.luma_log2_weight_denom = slice->luma_log2_weight_denom;
+    m_SliceHeader.luma_log2_weight_denom   = slice->luma_log2_weight_denom;
     m_SliceHeader.chroma_log2_weight_denom = slice->chroma_log2_weight_denom;
-    m_SliceHeader.slice_sao_luma_flag = slice->slice_sao_luma_flag;
-    m_SliceHeader.slice_sao_chroma_flag = slice->slice_sao_chroma_flag;
-    m_SliceHeader.cabac_init_flag        = slice->cabac_init_flag;
+    m_SliceHeader.slice_sao_luma_flag      = slice->slice_sao_luma_flag;
+    m_SliceHeader.slice_sao_chroma_flag    = slice->slice_sao_chroma_flag;
+    m_SliceHeader.cabac_init_flag          = slice->cabac_init_flag;
 
     m_SliceHeader.mvd_l1_zero_flag = slice->mvd_l1_zero_flag;
-    m_SliceHeader.slice_loop_filter_across_slices_enabled_flag  = slice->slice_loop_filter_across_slices_enabled_flag;
-    m_SliceHeader.slice_temporal_mvp_enabled_flag                = slice->slice_temporal_mvp_enabled_flag;
-    m_SliceHeader.max_num_merge_cand               = slice->max_num_merge_cand;
+    m_SliceHeader.slice_loop_filter_across_slices_enabled_flag = slice->slice_loop_filter_across_slices_enabled_flag;
+    m_SliceHeader.slice_temporal_mvp_enabled_flag = slice->slice_temporal_mvp_enabled_flag;
+    m_SliceHeader.max_num_merge_cand  = slice->max_num_merge_cand;
+    m_SliceHeader.use_integer_mv_flag = slice->use_integer_mv_flag;
 
     m_SliceHeader.cu_chroma_qp_offset_enabled_flag = slice->cu_chroma_qp_offset_enabled_flag;
 
@@ -372,6 +570,15 @@ void H265Slice::CopyFromBaseSlice(const H265Slice * s)
     m_SliceHeader.SliceCurStartCUAddr = slice->SliceCurStartCUAddr;
 
     m_SliceHeader.m_RefPicListModification = slice->m_RefPicListModification;
+
+    m_SliceHeader.m_numPicStCurr0 = slice->m_numPicStCurr0;
+    m_SliceHeader.m_numPicStCurr1 = slice->m_numPicStCurr1;
+    m_SliceHeader.m_numPicLtCurr  = slice->m_numPicLtCurr;
+
+    for (int32_t i = 0; i < MAX_NUM_REF_PICS + 1; i++)
+    {
+        m_SliceHeader.m_RpsPOCCurrList0[i] = slice->m_RpsPOCCurrList0[i];
+    }
 }
 
 // Build reference lists from slice reference pic set. HEVC spec 8.3.2
@@ -403,64 +610,58 @@ UMC::Status H265Slice::UpdateReferenceList(H265DBPList *pDecoderFrameList, H265D
 
     H265DecoderFrame *RefPicSetStCurr0[16] = {};
     H265DecoderFrame *RefPicSetStCurr1[16] = {};
-    H265DecoderFrame *RefPicSetLtCurr[16] = {};
+    H265DecoderFrame *RefPicSetLtCurr[16]  = {};
     uint32_t NumPicStCurr0 = 0;
     uint32_t NumPicStCurr1 = 0;
-    uint32_t NumPicLtCurr = 0;
+    uint32_t NumPicLtCurr  = 0;
     uint32_t i;
 
-    for(i = 0; i < getRPS()->getNumberOfNegativePictures(); i++)
+    for (i = 0; i < header->m_numPicStCurr0; i++)
     {
-        if(getRPS()->getUsed(i))
+        int32_t poc = header->m_RpsPOCCurrList0[i];
+
+        H265DecoderFrame *pFrm = pDecoderFrameList->findShortRefPic(poc);
+        m_pCurrentFrame->AddReferenceFrame(pFrm);
+
+        if (pFrm)
+            pFrm->SetisLongTermRef(false);
+        RefPicSetStCurr0[NumPicStCurr0] = pFrm;
+        NumPicStCurr0++;
+        if (!pFrm)
         {
-            int32_t poc = header->slice_pic_order_cnt_lsb + getRPS()->getDeltaPOC(i);
-
-            H265DecoderFrame *pFrm = pDecoderFrameList->findShortRefPic(poc);
-            m_pCurrentFrame->AddReferenceFrame(pFrm);
-
-            if (pFrm)
-                pFrm->SetisLongTermRef(false);
-            RefPicSetStCurr0[NumPicStCurr0] = pFrm;
-            NumPicStCurr0++;
-            if (!pFrm)
-            {
-                /* Reporting about missed reference */
-                m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_REFERENCE_FRAME);
-                /* And because frame can not be decoded properly set flag "ERROR_FRAME_MAJOR" too*/
-                m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_MAJOR);
-            }
-            // pcRefPic->setCheckLTMSBPresent(false);
+            /* Reporting about missed reference */
+            m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_REFERENCE_FRAME);
+            /* And because frame can not be decoded properly set flag "ERROR_FRAME_MAJOR" too*/
+            m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_MAJOR);
         }
+        // pcRefPic->setCheckLTMSBPresent(false);
     }
 
-    for(; i < getRPS()->getNumberOfNegativePictures() + getRPS()->getNumberOfPositivePictures(); i++)
+    for (i = header->m_numPicStCurr0; i < header->m_numPicStCurr0 + header->m_numPicStCurr1; i++)
     {
-        if(getRPS()->getUsed(i))
+        int32_t poc = header->m_RpsPOCCurrList0[i];
+
+        H265DecoderFrame *pFrm = pDecoderFrameList->findShortRefPic(poc);
+        m_pCurrentFrame->AddReferenceFrame(pFrm);
+
+        if (pFrm)
+            pFrm->SetisLongTermRef(false);
+        RefPicSetStCurr1[NumPicStCurr1] = pFrm;
+        NumPicStCurr1++;
+        if (!pFrm)
         {
-            int32_t poc = header->slice_pic_order_cnt_lsb + getRPS()->getDeltaPOC(i);
-
-            H265DecoderFrame *pFrm = pDecoderFrameList->findShortRefPic(poc);
-            m_pCurrentFrame->AddReferenceFrame(pFrm);
-
-            if (pFrm)
-                pFrm->SetisLongTermRef(false);
-            RefPicSetStCurr1[NumPicStCurr1] = pFrm;
-            NumPicStCurr1++;
-            if (!pFrm)
-            {
-                /* Reporting about missed reference */
-                m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_REFERENCE_FRAME);
-                /* And because frame can not be decoded properly set flag "ERROR_FRAME_MAJOR" too*/
-                m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_MAJOR);
-            }
-            // pcRefPic->setCheckLTMSBPresent(false);
+            /* Reporting about missed reference */
+            m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_REFERENCE_FRAME);
+            /* And because frame can not be decoded properly set flag "ERROR_FRAME_MAJOR" too*/
+            m_pCurrentFrame->SetErrorFlagged(UMC::ERROR_FRAME_MAJOR);
         }
+        // pcRefPic->setCheckLTMSBPresent(false);
     }
 
-    for(i = getRPS()->getNumberOfNegativePictures() + getRPS()->getNumberOfPositivePictures();
+    for (i = getRPS()->getNumberOfNegativePictures() + getRPS()->getNumberOfPositivePictures();
         i < getRPS()->getNumberOfNegativePictures() + getRPS()->getNumberOfPositivePictures() + getRPS()->getNumberOfLongtermPictures(); i++)
     {
-        if(getRPS()->getUsed(i))
+        if (getRPS()->getUsed(i))
         {
             int32_t poc = getRPS()->getPOC(i);
 
@@ -598,7 +799,7 @@ UMC::Status H265Slice::UpdateReferenceList(H265DBPList *pDecoderFrameList, H265D
     if (header->slice_type != I_SLICE)
     {
         bool bLowDelay = true;
-        int32_t currPOC = header->slice_pic_order_cnt_lsb;
+        int32_t currPOC = header->m_poc;
 
         H265DecoderFrame *missedReference = 0;
 
@@ -647,6 +848,16 @@ UMC::Status H265Slice::UpdateReferenceList(H265DBPList *pDecoderFrameList, H265D
 
     return ps;
 } // Status H265Slice::UpdateRefPicList(H265DBPList *pDecoderFrameList)
+
+bool H265Slice::GetRapPicFlag() const
+{
+    return GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_IDR_W_RADL
+        || GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_IDR_N_LP
+        || GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_BLA_N_LP
+        || GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_RADL
+        || GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_BLA_W_LP
+        || GetSliceHeader()->nal_unit_type == NAL_UT_CODED_SLICE_CRA;
+}
 
 // RPS data structure constructor
 ReferencePictureSet::ReferencePictureSet()

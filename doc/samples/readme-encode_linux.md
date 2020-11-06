@@ -55,7 +55,7 @@ The following command-line switches are optional:
 
 |Option|Description|
 |---|---|
-|[-nv12\|yuy2\|ayuv\|rgb4\|p010\|y210\|y410\|a2rgb10]| input color format (by default YUV420 is expected).|
+|[-nv12\|yuy2\|ayuv\|rgb4\|p010\|y210\|y410\|a2rgb10\|p016\|y216]| input color format (by default YUV420 is expected).|
 |[-msb10]| 10-bit color format is expected to have data in Most Significant Bits of words. (LSB data placement is expected by default). This option also disables data shifting during file reading.|
 | [-ec::p010] | force usage of P010 surfaces for encoder (conversion will be made if necessary). Use for 10 bit HEVC encoding|
 |[-tff\|bff]| input stream is interlaced, top\|bottom field first, if not specified progressive is expected|
@@ -86,6 +86,7 @@ The following command-line switches are optional:
   | [-gpucopy::<on,off>] |Enable or disable GPU copy mode|
  |  [-vbr]     | variable bitrate control|
   | [-cbr]     | constant bitrate control|
+  | [-vcm]     | Video Conferencing Mode (VCM) bitrate control method|
   | [-qvbr quality] | variable bitrate control algorithm with constant quality. Quality in range [1,51]. 1 is the best quality.|
    |[-icq quality] | Intelligent Constant Quality (ICQ) bitrate control method. In range [1,51]. 1 is the best quality.<br> If [-la] or [-lad] options are enabled simultaneously, then LA_ICQ bitrate control method will be used.|
   | [-avbr]| average variable bitrate control algorithm|
@@ -107,6 +108,7 @@ The following command-line switches are optional:
   | [-num_slice] | number of slices in each video frame. 0 by default. If num_slice equals zero, the encoder may choose any slice partitioning allowed by the codec standard.|
    |[-mss] |maximum slice size in bytes. Supported only with -hw and h264 codec. This option is not compatible with -num_slice option.|
   | [-mfs]|maximum frame size in bytes. Supported only with h264 and hevc codec for VBR mode.|
+  | [-BitrateLimit:<on,off>] | Modifies bitrate to be in the range imposed by the SDK encoder. Setting this flag off may lead to violation of HRD conformance. The default value is OFF, i.e. bitrate is not limited. It works with AVC only.|
   | [-re]      |enable region encode mode. Works only with h265 encoder|
   | [-CodecProfile] | specifies codec profile|
  |  [-CodecLevel]   | specifies codec level|
@@ -123,8 +125,8 @@ The following command-line switches are optional:
  |[-WeightedPred:default\|implicit ]   | enables weighted prediction mode|
 |   [-WeightedBiPred:default\|implicit ] | enables weighted bi-prediction mode|
    |[-timeout] | encoding in cycle not less than specific time in seconds|
-  | [-membuf] | size of memory buffer in frames|
   | [-uncut]  | do not cut output file in looped mode (in case of -timeout option)|
+  | [-perf_opt n] | sets number of prefetched frames. In performance mode app preallocates buffer and loads first n frames |
  |  [-dump fileName] |dump MSDK components configuration to the file in text form|
   | [-usei]| insert user data unregistered SEI. eg: 7fc92488825d11e7bb31be2e44b06b34:0:MSDK (uuid:type<0-preifx/1-suffix>:message) <br>the suffix SEI for HEVCe can be inserted when CQP used or HRD disabled|
   | [-extbrc:<on,off,implicit>] | External BRC for AVC and HEVC encoders|

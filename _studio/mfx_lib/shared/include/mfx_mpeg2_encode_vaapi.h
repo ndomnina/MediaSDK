@@ -55,43 +55,45 @@ namespace MfxHwMpeg2Encode
         ~VAAPIEncoder();
 
         virtual
-        mfxStatus QueryEncodeCaps(ENCODE_CAPS & caps, mfxU8 codecProfileType);
+        void QueryEncodeCaps(ENCODE_CAPS & caps) override;
 
         virtual
-        mfxStatus Init(ExecuteBuffers* pExecuteBuffers, mfxU32 numRefFrames, mfxU32 funcId);
+        mfxStatus Init(ExecuteBuffers* pExecuteBuffers, mfxU32 numRefFrames, mfxU32 funcId) override;
 
         virtual
-        mfxStatus CreateContext(ExecuteBuffers* pExecuteBuffers, mfxU32 numRefFrames, mfxU32 funcId);
+        mfxStatus CreateContext(ExecuteBuffers* pExecuteBuffers, mfxU32 numRefFrames, mfxU32 funcId) override;
 
         virtual
-        mfxStatus Execute(ExecuteBuffers* pExecuteBuffers, mfxU8* pUserData = 0, mfxU32 userDataLen = 0);
+        mfxStatus Execute(ExecuteBuffers* pExecuteBuffers, mfxU8* pUserData = 0, mfxU32 userDataLen = 0) override;
 
         virtual
-        mfxStatus Close();
+        mfxStatus Close() override;
 
         virtual
-        bool      IsFullEncode() const { return true; }
+        bool      IsFullEncode() const override { return true; }
 
         virtual
-        mfxStatus RegisterRefFrames(const mfxFrameAllocResponse* pResponse);
+        mfxStatus RegisterRefFrames(const mfxFrameAllocResponse* pResponse) override;
 
         virtual
-        mfxStatus FillMBBufferPointer(ExecuteBuffers* pExecuteBuffers);
+        mfxStatus FillMBBufferPointer(ExecuteBuffers* pExecuteBuffers) override;
 
         virtual
-        mfxStatus FillBSBuffer(mfxU32 nFeedback,mfxU32 nBitstream, mfxBitstream* pBitstream, Encryption *pEncrypt);
+        mfxStatus FillBSBuffer(mfxU32 nFeedback,mfxU32 nBitstream, mfxBitstream* pBitstream, Encryption *pEncrypt) override;
 
         virtual
-        mfxStatus SetFrames (ExecuteBuffers* pExecuteBuffers);
+        mfxStatus SetFrames (ExecuteBuffers* pExecuteBuffers) override;
+
+        virtual
+        mfxStatus CreateAuxilliaryDevice(mfxU16 codecProfile) override;
+
+        VAAPIEncoder(const VAAPIEncoder&) = delete;
+        VAAPIEncoder& operator=(const VAAPIEncoder&) = delete;
 
     private:
         struct VAEncQpBufferMPEG2 {
             mfxU32 qp_y;
         };
-
-
-        VAAPIEncoder(const VAAPIEncoder&); // no implementation
-        VAAPIEncoder& operator=(const VAAPIEncoder&); // no implementation
 
         mfxStatus QueryCompBufferInfo(D3DDDIFORMAT type, mfxFrameAllocRequest* pRequest, ExecuteBuffers* pExecuteBuffers);
         mfxStatus CreateCompBuffers  (ExecuteBuffers* pExecuteBuffers, mfxU32 numRefFrames);
@@ -112,6 +114,7 @@ namespace MfxHwMpeg2Encode
         mfxStatus Register (const mfxFrameAllocResponse* pResponse, D3DDDIFORMAT type);
         mfxI32    GetRecFrameIndex (mfxMemId memID);
         mfxI32    GetRawFrameIndex (mfxMemId memIDe, bool bAddFrames);
+        mfxStatus FillPriorityBuffer(mfxPriority&);
 
 
         VideoCORE*                          m_core;
@@ -146,9 +149,11 @@ namespace MfxHwMpeg2Encode
         VABufferID                          m_mbqpBufferId;
         VABufferID                          m_miscQualityParamId;
         std::vector<VAEncQpBufferMPEG2>     m_mbqpDataBuffer;
+        VABufferID                          m_priorityBufferId;
+        VAContextParameterUpdateBuffer      m_priorityBuffer;
 
+        mfxU32                              m_MaxContextPriority;
 
-        int                                 m_vbvBufSize;
         mfxU16                              m_initFrameWidth;
         mfxU16                              m_initFrameHeight;
 
@@ -165,6 +170,7 @@ namespace MfxHwMpeg2Encode
         mfxRawFrames                        m_rawFrames;
 
         UMC::Mutex                          m_guard;
+        ENCODE_CAPS                         m_caps;
     }; // class VAAPIEncoder
 
 
