@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2020 Intel Corporation
+# Copyright (c) 2018 Intel Corporation
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -34,14 +34,11 @@ endif()
 
 mfx_include_dirs()
 
-include_directories( ${MSDK_STUDIO_ROOT}/enctools/include )
 include_directories( ${MSDK_STUDIO_ROOT}/shared/asc/include )
 include_directories( ${MSDK_LIB_ROOT}/plugin/include )
-include_directories( ${MSDK_LIB_ROOT}/scheduler/linux/include )
+include_directories( ${MSDK_LIB_ROOT}/scheduler/include )
 include_directories( ${MSDK_LIB_ROOT}/genx/copy_kernels/isa )
 include_directories( ${MSDK_LIB_ROOT}/genx/h264_encode/isa )
-include_directories( ${MSDK_LIB_ROOT}/cmrt_cross_platform/include )
-include_directories( ${MSDK_LIB_ROOT}/mctf_package/mctf/include )
 
 list( APPEND umc_dirs
   brc
@@ -82,15 +79,8 @@ list( APPEND plugin_common_sources
 )
 
 set( prefix ${MSDK_STUDIO_ROOT}/shared/src )
-
-add_library(fast_copy_sse4_plugin OBJECT ${prefix}/fast_copy_sse4_impl.cpp)
-target_compile_options(fast_copy_sse4_plugin PRIVATE -msse4.1)
-configure_build_variant(fast_copy_sse4_plugin none)
-
 list( APPEND plugin_common_sources
   ${prefix}/cm_mem_copy.cpp
-  ${prefix}/fast_copy_c_impl.cpp
-  ${prefix}/fast_copy.cpp
   ${prefix}/libmfx_allocator.cpp
   ${prefix}/libmfx_allocator_vaapi.cpp
   ${prefix}/libmfx_core.cpp
@@ -99,10 +89,9 @@ list( APPEND plugin_common_sources
   ${prefix}/libmfx_core_hw.cpp
   ${prefix}/mfx_umc_alloc_wrapper.cpp
   ${MSDK_LIB_ROOT}/cmrt_cross_platform/src/cmrt_cross_platform.cpp
-  $<TARGET_OBJECTS:fast_copy_sse4_plugin>
 )
 
-set( prefix ${MSDK_LIB_ROOT}/scheduler/linux/src )
+set( prefix ${MSDK_LIB_ROOT}/scheduler/src )
 list( APPEND plugin_common_sources
   ${prefix}/mfx_scheduler_core.cpp
   ${prefix}/mfx_scheduler_core_iunknown.cpp
@@ -128,13 +117,19 @@ if( DEFINED H264LA_ENCODER_GUID )
   set( H264LA_PRODUCT_NAME "Intel(R) Media SDK" )
   set( hw_H264LA_ENCODER_DESCRIPTION "Intel(R) Media SDK Advanced AVCe Plug-in" )
 
+  if( NOT DEFINED ENV{MFX_H264LA_VERSION} )
+    set( h264la_version 0.0.000.0000 )
+  else()
+    set( h264la_version $ENV{MFX_H264LA_VERSION} )
+  endif()
+
   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set( plugin_name mfx_h264la_hw64 )
   else()
     set( plugin_name mfx_h264la_hw32 )
   endif()
 
-  set_file_and_product_version( ${MEDIA_VERSION_STR} version_defs )
+  set_file_and_product_version( ${h264la_version} version_defs )
 
   ## include, source and libs
   list( APPEND sources ${plugin_common_sources} )
@@ -179,9 +174,6 @@ if( DEFINED H264LA_ENCODER_GUID )
     vm_plus
     genx
     asc
-    enctools_hw
-    mfx
-    mctf_hw
     mfx_trace
     ${ITT_LIBRARIES}
     pthread
@@ -213,13 +205,19 @@ if( DEFINED HEVC_DECODER_HW_GUID )
   set( HEVC_PRODUCT_NAME "Intel(R) Media SDK" )
   set( hw_HEVC_DECODER_DESCRIPTION "Intel(R) Media SDK HEVC Hardware Decode Plug-in - Compatibility Stub" )
 
+  if( NOT DEFINED ENV{MFX_HEVC_VERSION} )
+    set( hevc_version 0.0.000.0000 )
+  else()
+    set( hevc_version $ENV{MFX_HEVC_VERSION} )
+  endif()
+
   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set( plugin_name mfx_hevcd_hw64 )
   else()
     set( plugin_name mfx_hevcd_hw32 )
   endif()
 
-  set_file_and_product_version( ${MEDIA_VERSION_STR} version_defs )
+  set_file_and_product_version( ${hevc_version} version_defs )
 
   list( APPEND sources
     ${CMAKE_CURRENT_SOURCE_DIR}/src/mfx_hevc_dec_plugin.cpp
@@ -253,13 +251,19 @@ if( DEFINED VP8_DECODER_HW_GUID )
   set( VP8_PRODUCT_NAME "Intel(R) Media SDK" )
   set( hw_VP8_DECODER_DESCRIPTION "Intel(R) Media SDK VP8 Hardware Decode Plug-in - Compatibility Stub" )
 
+  if( NOT DEFINED ENV{MFX_VP8_VERSION} )
+    set( vp8_version 0.0.000.0000 )
+  else()
+    set( vp8_version $ENV{MFX_VP8_VERSION} )
+  endif()
+
   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set( plugin_name mfx_vp8d_hw64 )
   else()
     set( plugin_name mfx_vp8d_hw32 )
   endif()
 
-  set_file_and_product_version( ${MEDIA_VERSION_STR} version_defs )
+  set_file_and_product_version( ${vp8_version} version_defs )
 
   list( APPEND sources
     ${CMAKE_CURRENT_SOURCE_DIR}/src/mfx_vp8_dec_plugin.cpp
@@ -294,13 +298,19 @@ if( DEFINED VP9_DECODER_HW_GUID )
   set( VP9_PRODUCT_NAME "Intel(R) Media SDK" )
   set( hw_VP9_DECODER_DESCRIPTION "Intel(R) Media SDK VP9 Hardware Decode Plug-in - Compatibility Stub" )
 
+  if( NOT DEFINED ENV{MFX_VP9_VERSION} )
+    set( vp9_version 0.0.000.0000 )
+  else()
+    set( vp9_version $ENV{MFX_VP9_VERSION} )
+  endif()
+
   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set( plugin_name mfx_vp9d_hw64 )
   else()
     set( plugin_name mfx_vp9d_hw32 )
   endif()
 
-  set_file_and_product_version( ${MEDIA_VERSION_STR} version_defs )
+  set_file_and_product_version( ${vp9_version} version_defs )
 
   ## include, source and libs
   list( APPEND sources

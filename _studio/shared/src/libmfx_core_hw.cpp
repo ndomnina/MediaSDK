@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 Intel Corporation
+// Copyright (c) 2007-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -82,18 +82,6 @@ mfxU32 ChooseProfile(mfxVideoParam const* param, eMFXHWType)
         }
         break;
 
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-    case MFX_CODEC_AV1:
-        profile |= VA_AV1;
-        switch (param->mfx.FrameInfo.FourCC)
-        {
-        case MFX_FOURCC_P010:
-            profile |= VA_PROFILE_10;
-            break;
-        }
-        break;
-#endif
-
 
     case MFX_CODEC_HEVC:
         profile |= VA_H265;
@@ -131,7 +119,7 @@ mfxU32 ChooseProfile(mfxVideoParam const* param, eMFXHWType)
 
         {
             mfxU32 const profile_idc = ExtractProfile(param->mfx.CodecProfile);
-#if (MFX_VERSION >= 1032)
+#if (MFX_VERSION >= MFX_VERSION_NEXT)
             if (profile_idc == MFX_PROFILE_HEVC_SCC)
                 profile |= VA_PROFILE_SCC;
 #endif

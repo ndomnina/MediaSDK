@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Intel Corporation
+// Copyright (c) 2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -108,25 +108,24 @@ namespace HEVCEHW
     };
 };
 
-#if defined(MFX_VA_LINUX)
-    #include "hevcehw_base_lin.h"
-    namespace HEVCEHWDisp { namespace Base { using namespace HEVCEHW::Linux::Base; }; };
+#if defined(MFX_ENABLE_HEVCEHW_REFACTORING_LIN_GEN9) && defined(MFX_VA_LINUX)
+    #include "hevcehw_g9_lin.h"
+    namespace HEVCEHWDisp { namespace Gen9 { using namespace HEVCEHW::Linux::Gen9; }; };
 #else
-    namespace HEVCEHWDisp { namespace Base { using namespace HEVCEHW::LegacyFallback; }; };
+    namespace HEVCEHWDisp { namespace Gen9 { using namespace HEVCEHW::LegacyFallback; }; };
 #endif
 
-#if defined(MFX_VA_LINUX)
-    // There is no gen9/gen11 separation in code - use Base code-pass for ICL as well
-    #include "hevcehw_base_lin.h"
-    namespace HEVCEHWDisp { namespace Gen11 { using namespace HEVCEHW::Linux::Base; }; };
+#if defined(MFX_ENABLE_HEVCEHW_REFACTORING_LIN_GEN11) && defined(MFX_VA_LINUX)
+    // There is no gen9/gen11 separation in code - use Gen9 code-pass for ICL as well
+    #include "hevcehw_g9_lin.h"
+    namespace HEVCEHWDisp { namespace Gen11 { using namespace HEVCEHW::Linux::Gen9; }; };
 #else
     namespace HEVCEHWDisp { namespace Gen11 { using namespace HEVCEHW::LegacyFallback; }; };
 #endif
 
-#if defined(MFX_VA_LINUX)
+#if defined(MFX_ENABLE_HEVCEHW_REFACTORING_LIN_TGL) && defined(MFX_VA_LINUX)
     #include "hevcehw_g12_lin.h"
     namespace HEVCEHWDisp { namespace TGL { using namespace HEVCEHW::Linux::Gen12; }; };
-    namespace HEVCEHWDisp { namespace DG1 { using namespace HEVCEHW::Linux::Gen12; }; };
 #else
     namespace HEVCEHWDisp { namespace TGL { using namespace HEVCEHW::LegacyFallback; }; };
 #endif
@@ -140,13 +139,11 @@ static ImplBase* CreateSpecific(
     , mfxStatus& status
     , eFeatureMode mode)
 {
-    if (HW == MFX_HW_DG1)
-        return new HEVCEHWDisp::DG1::MFXVideoENCODEH265_HW(core, status, mode);
     if (HW >= MFX_HW_TGL_LP)
         return new HEVCEHWDisp::TGL::MFXVideoENCODEH265_HW(core, status, mode);
     if (HW >= MFX_HW_ICL)
         return new HEVCEHWDisp::Gen11::MFXVideoENCODEH265_HW(core, status, mode);
-    return new HEVCEHWDisp::Base::MFXVideoENCODEH265_HW(core, status, mode);
+    return new HEVCEHWDisp::Gen9::MFXVideoENCODEH265_HW(core, status, mode);
 }
 
 VideoENCODE* Create(

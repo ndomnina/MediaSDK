@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2020 Intel Corporation
+# Copyright (c) 2017 Intel Corporation
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -20,7 +20,23 @@
 
 message( STATUS "Global Configuration of Targets" )
 
+set( T_ARCH "sse4.2" )
+message( STATUS "Target Architecture to compile: ${T_ARCH}" )
+
 append("-std=c++11" CMAKE_CXX_FLAGS)
+
+# SW HEVC decoder & encoder require SSE4.2
+  if (CMAKE_C_COMPILER MATCHES icc)
+    append("-xSSE4.2 -static-intel" CMAKE_C_FLAGS)
+  else()
+    append("-m${T_ARCH}" CMAKE_C_FLAGS)
+  endif()
+
+  if (CMAKE_CXX_COMPILER MATCHES icpc)
+    append("-xSSE4.2 -static-intel" CMAKE_CXX_FLAGS)
+  else()
+    append("-m${T_ARCH}" CMAKE_CXX_FLAGS)
+  endif()
 
 if (ENABLE_TEXTLOG)
   append("-DMFX_TRACE_ENABLE_TEXTLOG" CMAKE_C_FLAGS)
@@ -57,28 +73,16 @@ if (BUILD_KERNELS)
 endif()
 
 if ( ${API_VERSION} VERSION_GREATER 1.25 )
-  set ( MFX_1_26_OPTIONS_ALLOWED ON )
+  set ( MFX_1_25_OPTIONS_ALLOWED ON )
 else()
-  set ( MFX_1_26_OPTIONS_ALLOWED OFF )
+  set ( MFX_1_25_OPTIONS_ALLOWED OFF )
 endif()
-
-if ( ${API_VERSION} VERSION_GREATER 1.33 )
-  set ( MFX_1_34_OPTIONS_ALLOWED ON )
-else()
-  set ( MFX_1_34_OPTIONS_ALLOWED OFF )
-endif()
-
-#if ON, enables encoding tools (EncTools) for encoding quality improvement; experimental feature
-option( MFX_ENABLE_ENCTOOLS "Enabled EncTools?" OFF)
-#if ON, enables adaptive encoding tools, part of EncTools, provided as libaenc.a binary; experimental feature
-option( MFX_ENABLE_AENC "Enabled AENC extension?" OFF)
 
 option( MFX_ENABLE_USER_DECODE "Enabled user decode plugins?" ON)
 option( MFX_ENABLE_USER_ENCODE "Enabled user encode plugins?" ON)
 option( MFX_ENABLE_USER_ENC "Enabled user ENC plugins?" ON)
 option( MFX_ENABLE_USER_VPP "Enabled user VPP plugins?" ON)
 
-option( MFX_ENABLE_AV1_VIDEO_DECODE "Enabled AV1 decoder?" ${MFX_1_34_OPTIONS_ALLOWED})
 option( MFX_ENABLE_VP8_VIDEO_DECODE "Enabled VP8 decoder?" ON)
 option( MFX_ENABLE_VP9_VIDEO_DECODE "Enabled VP9 decoder?" ON)
 option( MFX_ENABLE_H264_VIDEO_DECODE "Enabled AVC decoder?" ON)
@@ -104,7 +108,7 @@ option( MFX_ENABLE_VP9_VIDEO_ENCODE "Enable VP9 encoder?" ON)
 option( MFX_ENABLE_ASC "Enable ASC support?"  ON )
 
 cmake_dependent_option(
-  MFX_ENABLE_MCTF "Build with MCTF support?"  ${MFX_1_26_OPTIONS_ALLOWED}
+  MFX_ENABLE_MCTF "Build with MCTF support?"  ${MFX_1_25_OPTIONS_ALLOWED}
   "MFX_ENABLE_ASC;MFX_ENABLE_KERNELS" OFF)
 
 # Now we will include config file which may overwrite default values of the

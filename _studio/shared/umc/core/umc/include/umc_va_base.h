@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -50,9 +50,6 @@
 #include <va/va_vpp.h>
 #include <va/va_dec_vp9.h>
 #include <va/va_dec_hevc.h>
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-#include <va/va_dec_av1.h>
-#endif
 
 #ifndef UNREFERENCED_PARAMETER
 #define UNREFERENCED_PARAMETER(p) (p);
@@ -95,9 +92,6 @@ enum VideoAccelerationProfile
     VA_VP8          = 0x0006,
     VA_H265         = 0x0007,
     VA_VP9          = 0x0008,
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-    VA_AV1          = 0x0009,
-#endif
 
     // Entry points
     VA_ENTRY_POINT  = 0xfff00,
@@ -127,10 +121,6 @@ enum VideoAccelerationProfile
     VP8_VLD         = VA_VP8 | VA_VLD,
     HEVC_VLD        = VA_H265 | VA_VLD,
     VP9_VLD         = VA_VP9 | VA_VLD,
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-    AV1_VLD         = VA_AV1 | VA_VLD,
-    AV1_10_VLD      = VA_AV1 | VA_VLD | VA_PROFILE_10,
-#endif
 
     H265_VLD_REXT               = VA_H265 | VA_VLD | VA_PROFILE_REXT,
     H265_10_VLD_REXT            = VA_H265 | VA_VLD | VA_PROFILE_REXT | VA_PROFILE_10,
@@ -146,7 +136,7 @@ enum VideoAccelerationProfile
     H265_12_VLD_444             = VA_H265 | VA_VLD | VA_PROFILE_REXT | VA_PROFILE_12 | VA_PROFILE_444,
 #endif
 
-#if (MFX_VERSION >= 1032)
+#if (MFX_VERSION >= MFX_VERSION_NEXT)
     H265_VLD_SCC                = VA_H265 | VA_VLD | VA_PROFILE_SCC,
     H265_VLD_444_SCC            = VA_H265 | VA_VLD | VA_PROFILE_SCC  | VA_PROFILE_444,
     H265_10_VLD_SCC             = VA_H265 | VA_VLD | VA_PROFILE_SCC  | VA_PROFILE_10,
@@ -225,8 +215,6 @@ public:
         m_Profile(UNKNOWN),
         m_Platform(VA_UNKNOWN_PLATFORM),
         m_HWPlatform(MFX_HW_UNKNOWN),
-        m_MaxContextPriority(0),
-        m_ContextPriority(MFX_PRIORITY_LOW),
         m_protectedVA(nullptr),
         m_videoProcessingVA(0),
         m_allocator(0),
@@ -288,8 +276,6 @@ public:
     VideoAccelerationProfile    m_Profile;          // entry point
     VideoAccelerationPlatform   m_Platform;         // DXVA, LinuxVA, etc
     eMFXHWType                  m_HWPlatform;
-    uint32_t                    m_MaxContextPriority;
-    mfxPriority                 m_ContextPriority;
 
 protected:
     ProtectedVA       *  m_protectedVA;

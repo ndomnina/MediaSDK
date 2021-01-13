@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2020 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -59,45 +59,43 @@ namespace MfxHwMJpegEncode
             VideoCORE * core,
             mfxU32      width,
             mfxU32      height,
-            bool        isTemporal = false) override;
+            bool        isTemporal = false);
 
         virtual
         mfxStatus CreateAccelerationService(
-            mfxVideoParam const & par) override;
+            mfxVideoParam const & par);
 
         virtual
         mfxStatus RegisterBitstreamBuffer(
-            mfxFrameAllocResponse & response) override;
+            mfxFrameAllocResponse & response);
 
         virtual
-        mfxStatus Execute(DdiTask &task, mfxHDL surface) override;
+        mfxStatus Execute(DdiTask &task, mfxHDL surface);
 
         virtual
         mfxStatus QueryBitstreamBufferInfo(
-            mfxFrameAllocRequest & request) override;
+            mfxFrameAllocRequest & request);
 
         virtual
         mfxStatus QueryEncodeCaps(
-            JpegEncCaps & caps) override;
+            JpegEncCaps & caps);
 
         virtual
         mfxStatus QueryStatus(
-            DdiTask & task) override;
+            DdiTask & task);
 
         virtual
         mfxStatus UpdateBitstream(
             mfxMemId    MemId,
-            DdiTask   & task) override;
+            DdiTask   & task);
 
         virtual
-        mfxStatus Destroy() override;
-
-        VAAPIEncoder(VAAPIEncoder const &) = delete;
-        VAAPIEncoder & operator =(VAAPIEncoder const &) = delete;
+        mfxStatus Destroy();
 
     private:
+        VAAPIEncoder(VAAPIEncoder const &);              // no implementation
+        VAAPIEncoder & operator =(VAAPIEncoder const &); // no implementation
         mfxStatus DestroyBuffers();
-        mfxStatus FillPriorityBuffer(mfxPriority&);
 
         VideoCORE       * m_core;
         mfxU32            m_width;
@@ -115,11 +113,7 @@ namespace MfxHwMJpegEncode
         VABufferID  m_htBufferId;
         VABufferID  m_scanBufferId;
         VABufferID  m_ppsBufferId;
-        VABufferID  m_priorityBufferId;
         std::vector<VABufferID>  m_appBufferIds;;
-
-        VAContextParameterUpdateBuffer   m_priorityBuffer;
-        mfxU32                           m_MaxContextPriority;
     };
 
 }; // namespace

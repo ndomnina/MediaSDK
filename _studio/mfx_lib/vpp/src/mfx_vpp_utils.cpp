@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -932,7 +932,6 @@ mfxStatus GetPipelineList(
     mfxU16  srcW = 0, dstW = 0;
     mfxU16  srcH = 0, dstH = 0;
     //mfxU32  lenList = 0;
-    mfxStatus sts = MFX_ERR_NONE;
 
     MFX_CHECK_NULL_PTR1( videoParam );
 
@@ -1051,9 +1050,9 @@ mfxStatus GetPipelineList(
     PicStructMode picStructMode = GetPicStructMode(par->In.PicStruct, par->Out.PicStruct);
 
     mfxI32 deinterlacingMode = 0;
+    // look for user defined deinterlacing mode
     for (mfxU32 i = 0; i < videoParam->NumExtParam; i++)
     {
-        // look for user defined deinterlacing mode
         if (videoParam->ExtParam[i] && videoParam->ExtParam[i]->BufferId == MFX_EXTBUFF_VPP_DEINTERLACING)
         {
             mfxExtVPPDeinterlacing* extDI = (mfxExtVPPDeinterlacing*) videoParam->ExtParam[i];
@@ -1076,15 +1075,7 @@ mfxStatus GetPipelineList(
             }
             break;
         }
-        // check scaling parameters
-        else if (videoParam->ExtParam[i] && videoParam->ExtParam[i]->BufferId == MFX_EXTBUFF_VPP_SCALING)
-        {
-            sts = CheckScalingParam(videoParam->ExtParam[i]);
-            break;
-        }
     }
-    MFX_CHECK_STS(sts);
-
     /* DI configuration cases:
      * Default "-spic 0 -dpic 1" (TFF to progressive ) -> MFX_EXTBUFF_VPP_DI
      * Default "-spic 0 -dpic 1 -sf 30 -df 60" -> MFX_EXTBUFF_VPP_DI_30i60p
@@ -1334,7 +1325,6 @@ mfxStatus CheckFrameInfo(mfxFrameInfo* info, mfxU32 request, eMFXHWType platform
     switch (info->FourCC)
     {
         case MFX_FOURCC_NV12:
-        case MFX_FOURCC_YV12:
 #if defined (MFX_ENABLE_FOURCC_RGB565)
         case MFX_FOURCC_RGB565:
 #endif // MFX_ENABLE_FOURCC_RGB565
@@ -1344,8 +1334,6 @@ mfxStatus CheckFrameInfo(mfxFrameInfo* info, mfxU32 request, eMFXHWType platform
         case MFX_FOURCC_NV16:
         case MFX_FOURCC_YUY2:
         case MFX_FOURCC_AYUV:
-        // A2RGB10 supported as input in case of passthru copy
-        case MFX_FOURCC_A2RGB10:
 #if defined(MFX_VA_LINUX)
         // UYVY is supported on Linux only
         case MFX_FOURCC_UYVY:
@@ -1366,6 +1354,7 @@ mfxStatus CheckFrameInfo(mfxFrameInfo* info, mfxU32 request, eMFXHWType platform
             break;
 #endif
         case MFX_FOURCC_IMC3:
+        case MFX_FOURCC_YV12:
         case MFX_FOURCC_YUV400:
         case MFX_FOURCC_YUV411:
         case MFX_FOURCC_YUV422H:
@@ -1377,6 +1366,8 @@ mfxStatus CheckFrameInfo(mfxFrameInfo* info, mfxU32 request, eMFXHWType platform
 #ifdef MFX_ENABLE_RGBP
         case MFX_FOURCC_RGBP:
 #endif
+        case MFX_FOURCC_A2RGB10:
+            // 10bit RGB supported as output format only
             if (VPP_IN == request)
                 return MFX_ERR_INVALID_VIDEO_PARAM;
 
@@ -1965,37 +1956,6 @@ mfxU16 MapDNFactor( mfxU16 denoiseFactor )
 
 } // mfxU16 MapDNFactor( mfxU16 denoiseFactor )
 
-mfxStatus CheckScalingParam(mfxExtBuffer* pScalingExtBuffer)
-{
-    mfxStatus sts = MFX_ERR_NONE;
-
-    mfxExtVPPScaling* pScalingParams = (mfxExtVPPScaling*)pScalingExtBuffer;
-    if (pScalingParams)
-    {
-#if (MFX_VERSION >= 1033)
-        // Scaling parameter combination includes the below 2 cases
-        // (MFX_SCALING_MODE_DEFAULT / MFX_SCALING_MODE_QUALITY) + (MFX_INTERPOLATION_DEFAULT / MFX_INTERPOLATION_ADVANCED)
-        // MFX_SCALING_MODE_LOWPOWER + (MFX_INTERPOLATION_DEFAULT / MFX_INTERPOLATION_NEAREST_NEIGHBOR / MFX_INTERPOLATION_BILINEAR / MFX_INTERPOLATION_ADVANCED)
-        switch (pScalingParams->ScalingMode)
-        {
-        case MFX_SCALING_MODE_DEFAULT:
-            sts = ((pScalingParams->InterpolationMethod == MFX_INTERPOLATION_DEFAULT) || (pScalingParams->InterpolationMethod == MFX_INTERPOLATION_ADVANCED)) ? MFX_ERR_NONE : MFX_ERR_INVALID_VIDEO_PARAM;
-            break;
-        case MFX_SCALING_MODE_QUALITY:
-            sts = ((pScalingParams->InterpolationMethod == MFX_INTERPOLATION_DEFAULT) || (pScalingParams->InterpolationMethod == MFX_INTERPOLATION_ADVANCED)) ? MFX_ERR_NONE : MFX_ERR_INVALID_VIDEO_PARAM;
-            break;
-        case MFX_SCALING_MODE_LOWPOWER:
-            sts = (pScalingParams->InterpolationMethod <= MFX_INTERPOLATION_ADVANCED) ? MFX_ERR_NONE : MFX_ERR_INVALID_VIDEO_PARAM;
-            break;
-        default:
-            sts = MFX_ERR_INVALID_VIDEO_PARAM;
-            break;
-        }
-#endif
-    }
-
-    return sts;
-}
 
 mfxStatus CheckExtParam(VideoCORE * core, mfxExtBuffer** ppExtParam, mfxU16 count)
 {

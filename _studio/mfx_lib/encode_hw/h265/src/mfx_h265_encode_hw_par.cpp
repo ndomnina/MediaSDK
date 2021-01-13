@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +22,6 @@
 #if defined(MFX_ENABLE_H265_VIDEO_ENCODE)
 #include "mfx_h265_encode_hw_utils.h"
 #include "mfx_h265_encode_hw_ddi.h"
-#include "mfx_enc_common.h"
 #include <assert.h>
 #include <math.h>
 #include <algorithm>
@@ -910,33 +909,27 @@ bool CheckLCUSize(mfxU32 LCUSizeSupported, mfxU16& LCUSize)
     return false;
 }
 
-enum FType { // Frame type for GetMaxNumRef( , type)
-    P = 0,
-    BL0 = 1,
-    BL1 = 2
-};
-
-mfxU16 GetMaxNumRef(MfxVideoParam &par, FType type)
+mfxU16 GetMaxNumRef(MfxVideoParam &par, bool bForward)
 {
     if (par.mfx.TargetUsage < 1 || par.mfx.TargetUsage > 7)
         return 0;
 
-    if (IsOff(par.mfx.LowPower))
-    {   // VME
+    if (IsOff(par.mfx.LowPower)) {
+        // VME
         mfxU16 maxNumRefsL0[7] = { 4, 4, 3, 3, 3, 1, 1 };
         mfxU16 maxNumRefsL1[7] = { 2, 2, 1, 1, 1, 1, 1 };
-        return (type != BL1) ? maxNumRefsL0[par.mfx.TargetUsage - 1] : maxNumRefsL1[par.mfx.TargetUsage - 1];
+        return  bForward ? maxNumRefsL0[par.mfx.TargetUsage - 1] : maxNumRefsL1[par.mfx.TargetUsage - 1];
     }
 
     // VDENC
-    if (type == P) { // LowDelay B (P)
+    if (par.mfx.GopRefDist <= 1) { // LowDelay B (P)
         mfxU16 maxNumRefsL0L1[7] = { 3, 3, 2, 2, 2, 1, 1 };
         return maxNumRefsL0L1[par.mfx.TargetUsage - 1];
     }
     else { // RA B (neither ICL nor CNL here)
         mfxU16 maxNumRefsL0[7] = { 2, 2, 1, 1, 1, 1, 1 };
         mfxU16 maxNumRefsL1[7] = { 1, 1, 1, 1, 1, 1, 1 };
-        return  (type == BL0) ? maxNumRefsL0[par.mfx.TargetUsage - 1] : maxNumRefsL1[par.mfx.TargetUsage - 1];
+        return  bForward ? maxNumRefsL0[par.mfx.TargetUsage - 1] : maxNumRefsL1[par.mfx.TargetUsage - 1];
     }
 }
 
@@ -1091,8 +1084,6 @@ mfxStatus CheckAndFixDirtyRect(ENCODE_CAPS_HEVC const & caps, MfxVideoParam cons
     {
         // check that rectangle dimensions don't conflict with each other and don't exceed frame size
         RectData *rect = (RectData *)&(DirtyRect->Rect[i]);
-        // Dirty rectangle (0, 0, 0, 0) is a valid dirty rectangle and means that frame is not changed.
-        if (rect->Left==0 && rect->Right==0 && rect->Top==0 && rect->Bottom==0) continue;
 
         rsts = CheckAndFixRect(rect, par, caps);
 
@@ -1282,9 +1273,9 @@ void InheritDefaultValues(
 #if (MFX_VERSION >= 1025)
         if (parInit.mfx.TargetUsage != parReset.mfx.TargetUsage)
         {  // NumActiveRefs depends on TU
-            extOpt3Reset->NumRefActiveP[i]   = std::min<mfxU16>(extOpt3Init->NumRefActiveP[i],   GetMaxNumRef(parReset, P));
-            extOpt3Reset->NumRefActiveBL0[i] = std::min<mfxU16>(extOpt3Init->NumRefActiveBL0[i], GetMaxNumRef(parReset, BL0));
-            extOpt3Reset->NumRefActiveBL1[i] = std::min<mfxU16>(extOpt3Init->NumRefActiveBL1[i], GetMaxNumRef(parReset, BL1));
+            extOpt3Reset->NumRefActiveP[i]   = std::min<mfxU16>(extOpt3Init->NumRefActiveP[i],   GetMaxNumRef(parReset, true));
+            extOpt3Reset->NumRefActiveBL0[i] = std::min<mfxU16>(extOpt3Init->NumRefActiveBL0[i], GetMaxNumRef(parReset, true));
+            extOpt3Reset->NumRefActiveBL1[i] = std::min<mfxU16>(extOpt3Init->NumRefActiveBL1[i], GetMaxNumRef(parReset, false));
         }  else
 #endif
         {
@@ -1306,12 +1297,13 @@ void InheritDefaultValues(
 
     mfxExtCodingOptionDDI const* extOptDDIInit = &parInit.m_ext.DDI;
     mfxExtCodingOptionDDI      * extOptDDIReset = &parReset.m_ext.DDI;
+    InheritOption(extOptDDIInit->LCUSize, extOptDDIReset->LCUSize);
 #if (MFX_VERSION >= 1025)
     if (parInit.mfx.TargetUsage != parReset.mfx.TargetUsage)
     {   // NumActiveRefs depends on TU
-        extOptDDIReset->NumActiveRefP   = std::min<mfxU16>(extOptDDIInit->NumActiveRefP,   GetMaxNumRef(parReset, P));
-        extOptDDIReset->NumActiveRefBL0 = std::min<mfxU16>(extOptDDIInit->NumActiveRefBL0, GetMaxNumRef(parReset, BL0));
-        extOptDDIReset->NumActiveRefBL1 = std::min<mfxU16>(extOptDDIInit->NumActiveRefBL1, GetMaxNumRef(parReset, BL1));
+        extOptDDIReset->NumActiveRefP   = std::min<mfxU16>(extOptDDIInit->NumActiveRefP,   GetMaxNumRef(parReset, true));
+        extOptDDIReset->NumActiveRefBL0 = std::min<mfxU16>(extOptDDIInit->NumActiveRefBL0, GetMaxNumRef(parReset, true));
+        extOptDDIReset->NumActiveRefBL1 = std::min<mfxU16>(extOptDDIInit->NumActiveRefBL1, GetMaxNumRef(parReset, false));
     }  else
 #endif
     {
@@ -1582,6 +1574,17 @@ mfxStatus CheckVideoParam(MfxVideoParam& par, MFX_ENCODE_CAPS_HEVC const & caps,
 
     changed += CheckTriStateOption(par.mfx.LowPower);
 
+#if (MFX_VERSION >= 1025)
+    if (par.m_ext.DDI.LCUSize != 0)
+    {
+        if (CheckLCUSize(caps.ddi_caps.LCUSizeSupported, par.m_ext.DDI.LCUSize))
+        {
+            par.LCUSize = par.m_ext.DDI.LCUSize;
+        }
+        else
+            invalid++;
+    }
+
 #if (MFX_VERSION >= 1026)
     if (par.m_ext.HEVCParam.LCUSize != 0)
     {
@@ -1592,7 +1595,15 @@ mfxStatus CheckVideoParam(MfxVideoParam& par, MFX_ENCODE_CAPS_HEVC const & caps,
         else
             invalid++;
     }
+
+    // HEVCParam.LCUSize have a priority.
+    if ((par.m_ext.DDI.LCUSize != 0) &&  (par.m_ext.DDI.LCUSize != par.m_ext.HEVCParam.LCUSize))
+    {
+        par.m_ext.DDI.LCUSize = 0;
+        changed++;
+    }
 #endif // MFX_VERSION >= 1026
+#endif // MFX_VERSION >= 1025
     if (!par.LCUSize)
         par.LCUSize = GetDefaultLCUSize(par, caps.ddi_caps); //  that a local copy of actual value;
 
@@ -2168,6 +2179,12 @@ mfxStatus CheckVideoParam(MfxVideoParam& par, MFX_ENCODE_CAPS_HEVC const & caps,
             changed += CheckRange(par.mfx.QPP, minQP, maxQP);
         if (par.mfx.QPB)
             changed += CheckRange(par.mfx.QPB, minQP, maxQP);
+
+        if ((par.mfx.QPI == 0) && (par.mfx.QPP || par.mfx.QPB))
+        {
+            par.mfx.QPP = par.mfx.QPB = 0;
+            changed++;
+        }
     }
 
     if (par.BufferSizeInKB != 0)
@@ -2410,26 +2427,24 @@ mfxStatus CheckVideoParam(MfxVideoParam& par, MFX_ENCODE_CAPS_HEVC const & caps,
     //check Active Reference
 
     {
-        mfxU16 maxP  = std::min<mfxU16>(caps.ddi_caps.MaxNum_Reference0, maxDPB - 1);
-        mfxU16 maxB0 = maxP;
-        mfxU16 maxB1 = std::min<mfxU16>(caps.ddi_caps.MaxNum_Reference1, maxDPB - 1);
+        mfxU16 maxForward  = std::min<mfxU16>(caps.ddi_caps.MaxNum_Reference0, maxDPB - 1);
+        mfxU16 maxBackward = std::min<mfxU16>(caps.ddi_caps.MaxNum_Reference1, maxDPB - 1);
 
 #if (MFX_VERSION >= 1025)
         if (par.m_platform >= MFX_HW_CNL)
         {
-            maxP  = std::min<mfxU16>(maxP,  GetMaxNumRef(par, P));
-            maxB0 = std::min<mfxU16>(maxB0, GetMaxNumRef(par, BL0));
-            maxB1 = std::min<mfxU16>(maxB1, GetMaxNumRef(par, BL1));
+            maxForward  = std::min<mfxU16>(maxForward,  GetMaxNumRef(par, true));
+            maxBackward = std::min<mfxU16>(maxBackward, GetMaxNumRef(par, false));
         }
 #endif
 
-        changed += CheckMax(par.m_ext.DDI.NumActiveRefP,   maxP);
-        changed += CheckMax(par.m_ext.DDI.NumActiveRefBL0, maxB0);
-        changed += CheckMax(par.m_ext.DDI.NumActiveRefBL1, maxB1);
+        changed += CheckMax(par.m_ext.DDI.NumActiveRefP,   maxForward);
+        changed += CheckMax(par.m_ext.DDI.NumActiveRefBL0, maxForward);
+        changed += CheckMax(par.m_ext.DDI.NumActiveRefBL1, maxBackward);
 
-        maxP  = par.m_ext.DDI.NumActiveRefP   ? par.m_ext.DDI.NumActiveRefP   : maxP;
-        maxB0 = par.m_ext.DDI.NumActiveRefBL0 ? par.m_ext.DDI.NumActiveRefBL0 : maxB0;
-        maxB1 = par.m_ext.DDI.NumActiveRefBL1 ? par.m_ext.DDI.NumActiveRefBL1 : maxB1;
+        mfxU16 maxP = par.m_ext.DDI.NumActiveRefP ? par.m_ext.DDI.NumActiveRefP : maxForward;
+        mfxU16 maxB0 = par.m_ext.DDI.NumActiveRefBL0 ? par.m_ext.DDI.NumActiveRefBL0 : maxForward;
+        mfxU16 maxB1 = par.m_ext.DDI.NumActiveRefBL1 ? par.m_ext.DDI.NumActiveRefBL1 : maxBackward;
 
         for (mfxU16 i = 0; i < 8; i++)
         {
@@ -2497,61 +2512,14 @@ mfxStatus CheckVideoParam(MfxVideoParam& par, MFX_ENCODE_CAPS_HEVC const & caps,
 
     if (CO3.WinBRCSize > 0 || CO3.WinBRCMaxAvgKbps > 0)
     {
-        if ((par.mfx.RateControlMethod != MFX_RATECONTROL_VBR && par.mfx.RateControlMethod != MFX_RATECONTROL_QVBR))
+        if (par.mfx.RateControlMethod != MFX_RATECONTROL_VBR || !par.isSWBRC())
         {
-            //Sliding window is for VBR or QVBR
-            CO3.WinBRCMaxAvgKbps = 0;
-            CO3.WinBRCSize = 0;
-            changed++;
+            changed += CheckOption(CO3.WinBRCSize, 0, 0);
+            changed += CheckOption(CO3.WinBRCMaxAvgKbps, 0, 0);
         }
-        else if (!IsOn(CO2.ExtBRC))
+        else
         {
-            // check WinBRCSize
-            if (CO3.WinBRCSize > 0)
-            {
-                if (par.mfx.FrameInfo.FrameRateExtN != 0 && par.mfx.FrameInfo.FrameRateExtD != 0)
-                {
-                    mfxU16 iframerate = (mfxU16)ceil((mfxF64)par.mfx.FrameInfo.FrameRateExtN / par.mfx.FrameInfo.FrameRateExtD);
-                    changed += CheckOption(CO3.WinBRCSize, iframerate);
-                }
-                else
-                {
-                    //if FrameRateExtN and FrameRateExtD are not set - need to calculate them
-                    CalculateMFXFramerate((mfxF64)CO3.WinBRCSize, &par.mfx.FrameInfo.FrameRateExtN, &par.mfx.FrameInfo.FrameRateExtD);
-                }
-            }
-
-            // check WinBRCMaxAvgKbps
-            if (CO3.WinBRCMaxAvgKbps)
-            {
-                if (par.MaxKbps)
-                {
-                    changed += CheckOption(CO3.WinBRCMaxAvgKbps, par.MaxKbps);
-                }
-                else
-                {
-                    if (par.TargetKbps && CO3.WinBRCMaxAvgKbps < par.TargetKbps) // WinBRCMaxAvgKbps must not be less than TargetKbps
-                    {
-                        CO3.WinBRCMaxAvgKbps = 0;
-                        CO3.WinBRCSize = 0;
-                        invalid++;
-                    }
-                    else
-                    {
-                        changed += CheckOption(par.MaxKbps, par.TargetKbps);
-                    }
-                }
-            }
-            else
-            {
-                changed += CheckOption(CO3.WinBRCMaxAvgKbps, par.MaxKbps);
-            }
-        }
-        else if (par.TargetKbps && CO3.WinBRCMaxAvgKbps && CO3.WinBRCMaxAvgKbps < par.TargetKbps) // ExtBRC is on
-        {
-            CO3.WinBRCMaxAvgKbps = 0;
-            CO3.WinBRCSize = 0;
-            invalid++;
+            changed += CheckMin(CO3.WinBRCMaxAvgKbps, par.mfx.TargetKbps);
         }
     }
     if (par.mfx.RateControlMethod != MFX_RATECONTROL_CQP && par.isSWBRC())
@@ -2627,11 +2595,6 @@ mfxStatus CheckVideoParam(MfxVideoParam& par, MFX_ENCODE_CAPS_HEVC const & caps,
 #endif //defined(MFX_ENABLE_HEVCE_FADE_DETECTION)
 #endif //defined(MFX_ENABLE_HEVCE_WEIGHTED_PREDICTION)
 
-#if MFX_VERSION >= MFX_VERSION_NEXT
-    changed += CheckRangeDflt(CO3.DeblockingAlphaTcOffset, -12, 12, 0);
-    changed += CheckRangeDflt(CO3.DeblockingBetaOffset, -12, 12, 0);
-#endif
-
 #if (MFX_VERSION >= 1027)
     if (par.m_platform < MFX_HW_ICL)
         changed += CheckOption(par.m_ext.HEVCParam.GeneralConstraintFlags, 0);
@@ -2691,6 +2654,7 @@ void SetDefaults(
 #if MFX_VERSION >= 1026
     par.m_ext.HEVCParam.LCUSize = (mfxU16)par.LCUSize; // typecast is safe since value must be valid 8,16,32,64
 #endif
+    par.m_ext.DDI.LCUSize = (mfxU16)par.LCUSize;
 
     if (par.mfx.CodecLevel)
     {
@@ -2830,11 +2794,7 @@ void SetDefaults(
     if (par.mfx.RateControlMethod == MFX_RATECONTROL_CQP)
     {
         if (!par.mfx.QPI)
-            par.mfx.QPI = mfxU16(std::max<mfxI32>(par.mfx.QPP - 2, minQP) * !!par.mfx.QPP);
-        if (!par.mfx.QPI)
-            par.mfx.QPI = mfxU16(std::max<mfxI32>(par.mfx.QPB - 4, minQP) * !!par.mfx.QPB);
-        if (!par.mfx.QPI)
-            par.mfx.QPI = std::max<mfxU16>(minQP, (maxQP + 1) / 2);
+            par.mfx.QPI = 26;
         if (!par.mfx.QPP)
             par.mfx.QPP = std::min<mfxU16>(par.mfx.QPI + 2, maxQP);
         if (!par.mfx.QPB)
@@ -2895,6 +2855,8 @@ void SetDefaults(
     if (!par.mfx.GopPicSize)
         par.mfx.GopPicSize = (par.mfx.CodecProfile == MFX_PROFILE_HEVC_MAINSP ? 1 : 0xFFFF);
 
+
+
     if (!par.mfx.GopRefDist)
     {
         if (par.isTL() || hwCaps.ddi_caps.SliceIPOnly || par.mfx.GopPicSize < 3 || par.mfx.NumRefFrame == 1)
@@ -2905,7 +2867,7 @@ void SetDefaults(
 
     if (par.m_ext.CO2.BRefType == MFX_B_REF_UNKNOWN)
     {
-        if (par.mfx.GopRefDist > 3 && ((minRefForPyramid(par.mfx.GopRefDist, par.isField()) <= par.mfx.NumRefFrame) || par.mfx.NumRefFrame == 0))
+        if (par.mfx.GopRefDist > 3 && ((minRefForPyramid(par.mfx.GopRefDist, par.isField()) <= par.mfx.NumRefFrame) || par.mfx.NumRefFrame ==0))
             par.m_ext.CO2.BRefType = MFX_B_REF_PYRAMID;
         else
             par.m_ext.CO2.BRefType = MFX_B_REF_OFF;
@@ -2966,9 +2928,9 @@ void SetDefaults(
 #if (MFX_VERSION >= 1025)
         if (par.m_platform >= MFX_HW_CNL)
         {
-            RefActiveP   = std::min(RefActiveP,   GetMaxNumRef(par, P));
-            RefActiveBL0 = std::min(RefActiveBL0, GetMaxNumRef(par, BL0));
-            RefActiveBL1 = std::min(RefActiveBL1, GetMaxNumRef(par, BL1));
+            RefActiveP   = std::min(RefActiveP,   GetMaxNumRef(par, true));
+            RefActiveBL0 = std::min(RefActiveBL0, GetMaxNumRef(par, true));
+            RefActiveBL1 = std::min(RefActiveBL1, GetMaxNumRef(par, false));
         }
 #endif
 
@@ -3133,7 +3095,7 @@ void SetDefaults(
     }
 
 #if (MFX_VERSION >= 1027)
-    if ( (par.mfx.CodecProfile == MFX_PROFILE_HEVC_REXT && !par.m_ext.HEVCParam.GeneralConstraintFlags)
+    if (   (par.mfx.CodecProfile == MFX_PROFILE_HEVC_REXT && !par.m_ext.HEVCParam.GeneralConstraintFlags)
         )
     {
         mfxU64& constr = par.m_ext.HEVCParam.GeneralConstraintFlags;

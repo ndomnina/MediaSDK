@@ -25,7 +25,6 @@
 #include <va/va.h>
 #include <assert.h>
 
-#include "mfx_session.h"
 #include "libmfx_core_vaapi.h"
 #include "mfx_common_int.h"
 #include "mfx_mpeg2_encode_vaapi.h"
@@ -342,13 +341,10 @@ VAAPIEncoder::VAAPIEncoder(VideoCORE* core)
     , m_packedUserDataId(VA_INVALID_ID)
     , m_mbqpBufferId(VA_INVALID_ID)
     , m_miscQualityParamId(VA_INVALID_ID)
-    , m_priorityBufferId(VA_INVALID_ID)
-    , m_priorityBuffer()
-    , m_MaxContextPriority(0)
+    , m_vbvBufSize(0)
     , m_initFrameWidth(0)
     , m_initFrameHeight(0)
     , m_layout()
-    , m_caps()
 {
     std::fill_n(m_sliceParamBufferId, sizeof(m_sliceParamBufferId)/sizeof(m_sliceParamBufferId[0]), VA_INVALID_ID);
 
@@ -361,12 +357,7 @@ VAAPIEncoder::~VAAPIEncoder()
     Close();
 }
 
-inline bool CheckAttribValue(mfxU32 value)
-{
-    return (value != VA_ATTRIB_NOT_SUPPORTED) && (value != 0);
-}
-
-mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(mfxU16 codecProfile)
+mfxStatus VAAPIEncoder::QueryEncodeCaps(ENCODE_CAPS & caps, mfxU8 codecProfileType)
 {
     MFX_CHECK_NULL_PTR1(m_core);
 
@@ -379,21 +370,24 @@ mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(mfxU16 codecProfile)
         MFX_CHECK_STS(mfxSts);
     }
 
-    memset(&m_caps, 0, sizeof(m_caps));
+    // m_width  = width;
+    // m_height = height;
 
-    m_caps.EncodeFunc        = 1;
-    m_caps.BRCReset          = 1; // No bitrate resolution control
-    m_caps.VCMBitrateControl = 0; // Video conference mode
-    m_caps.HeaderInsertion   = 0; // We will provide headers (SPS, PPS) in binary format to the driver
-    m_caps.MbQpDataSupport   = 1;
-    m_caps.SkipFrame         = 1;
+    memset(&caps, 0, sizeof(caps));
 
-    m_caps.SliceIPBOnly      = 1;
-    m_caps.MaxNum_Reference  = 1;
-    m_caps.MaxPicWidth       = 1920;
-    m_caps.MaxPicHeight      = 1088;
-    m_caps.NoInterlacedField = 0; // Enable interlaced encoding
-    m_caps.SliceStructure    = 1; // 1 - SliceDividerSnb; 2 - SliceDividerHsw; 3 - SliceDividerBluRay; the other - SliceDividerOneSlice
+    caps.EncodeFunc        = 1;
+    caps.BRCReset          = 1; // No bitrate resolution control
+    caps.VCMBitrateControl = 0; // Video conference mode
+    caps.HeaderInsertion   = 0; // We will provide headers (SPS, PPS) in binary format to the driver
+    caps.MbQpDataSupport   = 1;
+    caps.SkipFrame         = 1;
+
+    caps.SliceIPBOnly      = 1;
+    caps.MaxNum_Reference  = 1;
+    caps.MaxPicWidth       = 1920;
+    caps.MaxPicHeight      = 1088;
+    caps.NoInterlacedField = 0; // Enable interlaced encoding
+    caps.SliceStructure    = 1; // 1 - SliceDividerSnb; 2 - SliceDividerHsw; 3 - SliceDividerBluRay; the other - SliceDividerOneSlice
 
     std::map<VAConfigAttribType, size_t> idx_map;
     VAConfigAttribType attr_types[] = {
@@ -415,8 +409,11 @@ mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(mfxU16 codecProfile)
 
     VAEntrypoint entrypoint = VAEntrypointEncSlice;
 
+    if(codecProfileType == MFX_PROFILE_UNKNOWN)
+        codecProfileType = MFX_PROFILE_MPEG2_MAIN;
+
     VAStatus vaSts = vaGetConfigAttributes(m_vaDisplay,
-                          ConvertProfileTypeMFX2VAAPI(codecProfile),
+                          ConvertProfileTypeMFX2VAAPI(codecProfileType),
                           entrypoint,
                           attrs.data(), attrs.size());
 
@@ -424,28 +421,27 @@ mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(mfxU16 codecProfile)
                 VA_STATUS_ERROR_UNSUPPORTED_PROFILE    == vaSts),
                 MFX_ERR_UNSUPPORTED);
 
-    if (CheckAttribValue(attrs[idx_map[VAConfigAttribMaxPictureWidth]].value))
-        m_caps.MaxPicWidth  = attrs[idx_map[VAConfigAttribMaxPictureWidth]].value;
+    if ((attrs[idx_map[VAConfigAttribMaxPictureWidth]].value != VA_ATTRIB_NOT_SUPPORTED) &&
+        (attrs[idx_map[VAConfigAttribMaxPictureWidth]].value != 0))
+        caps.MaxPicWidth  = attrs[idx_map[VAConfigAttribMaxPictureWidth]].value;
 
-    if (CheckAttribValue(attrs[idx_map[VAConfigAttribMaxPictureHeight]].value))
-        m_caps.MaxPicHeight = attrs[idx_map[VAConfigAttribMaxPictureHeight]].value;
+    if ((attrs[idx_map[VAConfigAttribMaxPictureHeight]].value != VA_ATTRIB_NOT_SUPPORTED) &&
+        (attrs[idx_map[VAConfigAttribMaxPictureHeight]].value != 0))
+        caps.MaxPicHeight = attrs[idx_map[VAConfigAttribMaxPictureHeight]].value;
 
-    if (CheckAttribValue(attrs[idx_map[VAConfigAttribEncSkipFrame]].value))
-        m_caps.SkipFrame  = attrs[idx_map[VAConfigAttribEncSkipFrame]].value;
+    if ((attrs[idx_map[VAConfigAttribEncSkipFrame]].value != VA_ATTRIB_NOT_SUPPORTED) &&
+        (attrs[idx_map[VAConfigAttribEncSkipFrame]].value != 0))
+        caps.SkipFrame  = attrs[idx_map[VAConfigAttribEncSkipFrame]].value;
 
-    if (CheckAttribValue(attrs[idx_map[VAConfigAttribEncMaxRefFrames]].value))
-        m_caps.MaxNum_Reference  = attrs[idx_map[VAConfigAttribEncMaxRefFrames]].value;
+    if ((attrs[idx_map[VAConfigAttribEncMaxRefFrames]].value != VA_ATTRIB_NOT_SUPPORTED) &&
+        (attrs[idx_map[VAConfigAttribEncMaxRefFrames]].value != 0))
+        caps.MaxNum_Reference  = attrs[idx_map[VAConfigAttribEncMaxRefFrames]].value;
 
-    if (CheckAttribValue(attrs[idx_map[VAConfigAttribEncSliceStructure]].value))
-        m_caps.SliceStructure  = attrs[idx_map[VAConfigAttribEncSliceStructure]].value;
+    if ((attrs[idx_map[VAConfigAttribEncSliceStructure]].value != VA_ATTRIB_NOT_SUPPORTED) &&
+        (attrs[idx_map[VAConfigAttribEncSliceStructure]].value != 0))
+        caps.SliceStructure  = attrs[idx_map[VAConfigAttribEncSliceStructure]].value;
 
     return MFX_ERR_NONE;
-}
-
-
-void VAAPIEncoder::QueryEncodeCaps(ENCODE_CAPS & caps)
-{
-    caps = m_caps;
 }
 
 mfxStatus VAAPIEncoder::Init(ExecuteBuffers* pExecuteBuffers, mfxU32 numRefFrames, mfxU32 funcId)
@@ -544,16 +540,6 @@ mfxStatus VAAPIEncoder::Init(ENCODE_FUNC func, ExecuteBuffers* pExecuteBuffers)
     // IsGuidSupported()
 
     // Configuration
-    std::vector<VAConfigAttrib> attrib_priority(1);
-    attrib_priority[0].type = VAConfigAttribContextPriority;
-    vaGetConfigAttributes(m_vaDisplay,
-        ConvertProfileTypeMFX2VAAPI(pExecuteBuffers->m_sps.Profile),
-        VAEntrypointEncSlice,
-        attrib_priority.data(), attrib_priority.size());
-    MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-    if (attrib_priority[0].value != VA_ATTRIB_NOT_SUPPORTED)
-        m_MaxContextPriority = attrib_priority[0].value;
-
     VAConfigAttrib attrib[3];
 
     attrib[0].type = VAConfigAttribRTFormat;
@@ -1165,39 +1151,6 @@ mfxStatus VAAPIEncoder::FillSkipFrameBuffer(mfxU8 skipFlag)
     return MFX_ERR_NONE;
 } // mfxStatus VAAPIEncoder::FillSkipFrameBuffer(mfxU8 skipFlag)
 
-mfxStatus VAAPIEncoder::FillPriorityBuffer(mfxPriority& priority)
-{
-    VAStatus vaSts;
-    memset(&m_priorityBuffer, 0, sizeof(VAContextParameterUpdateBuffer));
-    m_priorityBuffer.flags.bits.context_priority_update = 1;
-
-    if(priority == MFX_PRIORITY_LOW)
-    {
-        m_priorityBuffer.context_priority.bits.priority = 0;
-    }
-    else if (priority == MFX_PRIORITY_HIGH)
-    {
-        m_priorityBuffer.context_priority.bits.priority = m_MaxContextPriority;
-    }
-    else
-    {
-        m_priorityBuffer.context_priority.bits.priority = m_MaxContextPriority/2;
-    }
-
-    mfxStatus sts = CheckAndDestroyVAbuffer(m_vaDisplay, m_priorityBufferId);
-    MFX_CHECK_STS(sts);
-
-    vaSts = vaCreateBuffer(m_vaDisplay,
-        m_vaContextEncode,
-        VAContextParameterUpdateBufferType,
-        sizeof(m_priorityBuffer),
-        1,
-        &m_priorityBuffer,
-        &m_priorityBufferId);
-    MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-
-    return MFX_ERR_NONE;
-}
 
 mfxStatus VAAPIEncoder::Execute(ExecuteBuffers* pExecuteBuffers, mfxU32 funcId, mfxU8 *pUserData, mfxU32 userDataLen)
 {
@@ -1206,7 +1159,7 @@ mfxStatus VAAPIEncoder::Execute(ExecuteBuffers* pExecuteBuffers, mfxU32 funcId, 
     VAStatus vaSts;
 
     std::vector<VABufferID> configBuffers;
-    configBuffers.reserve(16);
+    configBuffers.reserve(15);
 
     if (pExecuteBuffers->m_bAddSPS)
     {
@@ -1343,15 +1296,7 @@ mfxStatus VAAPIEncoder::Execute(ExecuteBuffers* pExecuteBuffers, mfxU32 funcId, 
         pExecuteBuffers->m_mbqp_data[0] = 0;
     }
 
-    //configure the GPU priority parameters
-    if(m_MaxContextPriority)
-    {
-        mfxPriority contextPriority = m_core->GetSession()->m_priority;
-        mfxSts = FillPriorityBuffer(contextPriority);
-        MFX_CHECK(mfxSts == MFX_ERR_NONE, MFX_ERR_DEVICE_FAILED);
-        if (m_priorityBufferId != VA_INVALID_ID)
-            configBuffers.push_back(m_priorityBufferId);
-    }
+
 
     //------------------------------------------------------------------
     // Rendering
@@ -1556,12 +1501,6 @@ mfxStatus VAAPIEncoder::Close()
     sts = CheckAndDestroyVAbuffer(m_vaDisplay, m_mbqpBufferId);
     std::ignore = MFX_STS_TRACE(sts);
 
-    if(m_MaxContextPriority)
-    {
-        sts = CheckAndDestroyVAbuffer(m_vaDisplay, m_priorityBufferId);
-        std::ignore = MFX_STS_TRACE(sts);
-    }
-
     if (m_allocResponseMB.NumFrameActual != 0)
     {
         m_core->FreeFrames(&m_allocResponseMB);
@@ -1702,13 +1641,6 @@ mfxStatus VAAPIEncoder::FillBSBuffer(mfxU32 nFeedback,mfxU32 nBitstream, mfxBits
 
     VASurfaceStatus surfSts = VASurfaceSkipped;
 
-#if VA_CHECK_VERSION(1,9,0)
-    {
-        MFX_AUTO_LTRACE(MFX_TRACE_LEVEL_EXTCALL, "vaSyncBuffer");
-        vaSts = vaSyncBuffer(m_vaDisplay, codedBuffer, VA_TIMEOUT_INFINITE);
-        MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-    }
-#else
     {
         MFX_AUTO_LTRACE(MFX_TRACE_LEVEL_EXTCALL, "vaSyncSurface");
         vaSts = vaSyncSurface(m_vaDisplay, waitSurface);
@@ -1720,7 +1652,6 @@ mfxStatus VAAPIEncoder::FillBSBuffer(mfxU32 nFeedback,mfxU32 nBitstream, mfxBits
             vaSts = VA_STATUS_SUCCESS;
         MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
     }
-#endif
     surfSts = VASurfaceReady;
 
     switch (surfSts)

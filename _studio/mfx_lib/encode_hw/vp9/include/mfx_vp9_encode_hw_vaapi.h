@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -65,39 +65,45 @@ namespace MfxHwVP9Encode
         mfxStatus CreateAuxilliaryDevice(
             VideoCORE* core,
             GUID       guid,
-            VP9MfxVideoParam const & par) override;
+            VP9MfxVideoParam const & par);
 
         virtual
         mfxStatus CreateAccelerationService(
-            VP9MfxVideoParam const & par) override;
+            VP9MfxVideoParam const & par);
 
         virtual
         mfxStatus Reset(
-            VP9MfxVideoParam const & par) override;
+            VP9MfxVideoParam const & par);
+
+        // empty  for Lin
+        virtual
+        mfxStatus Register(
+            mfxMemId memId,
+            D3DDDIFORMAT type);
 
         // 2 -> 1
         virtual
         mfxStatus Register(
             mfxFrameAllocResponse& response,
-            D3DDDIFORMAT type) override;
+            D3DDDIFORMAT type);
 
         // (mfxExecuteBuffers& data)
         virtual
         mfxStatus Execute(
             Task const &task,
-            mfxHDLPair pair) override;
+            mfxHDLPair pair);
 
-        // recommendation from HW
+        // recomendation from HW
         virtual
         mfxStatus QueryCompBufferInfo(
             D3DDDIFORMAT type,
             mfxFrameAllocRequest& request,
             mfxU32 frameWidth,
-            mfxU32 frameHeight) override;
+            mfxU32 frameHeight);
 
         virtual
         mfxStatus QueryEncodeCaps(
-            ENCODE_CAPS_VP9& caps) override;
+            ENCODE_CAPS_VP9& caps);
 
         virtual
         mfxStatus QueryPlatform(
@@ -105,18 +111,18 @@ namespace MfxHwVP9Encode
 
         virtual
         mfxStatus QueryStatus(
-            Task & task) override;
+            Task & task);
 
         virtual
-            mfxU32 GetReconSurfFourCC() override;
+            mfxU32 GetReconSurfFourCC();
 
         virtual
-        mfxStatus Destroy() override;
-
-        VAAPIEncoder(const VAAPIEncoder&) = delete;
-        VAAPIEncoder& operator=(const VAAPIEncoder&) = delete;
+        mfxStatus Destroy();
 
     private:
+        VAAPIEncoder(const VAAPIEncoder&); // no implementation
+        VAAPIEncoder& operator=(const VAAPIEncoder&); // no implementation
+
         VideoCORE*  m_pmfxCore;
         VP9MfxVideoParam    m_video;
 
@@ -128,10 +134,10 @@ namespace MfxHwVP9Encode
         // encode params (extended structures)
         VAEncSequenceParameterBufferVP9             m_sps;
         VAEncPictureParameterBufferVP9              m_pps;
+        VAEncMiscParameterTemporalLayerStructure    m_tempLayers;
         VAEncMiscParameterTypeVP9PerSegmantParam    m_segPar;
         VAEncMiscParameterRateControl               m_vaBrcPar;
         VAEncMiscParameterFrameRate                 m_vaFrameRate;
-        VAContextParameterUpdateBuffer              m_priorityBuffer;
 
         VP9SeqLevelParam                            m_seqParam;
 
@@ -144,7 +150,6 @@ namespace MfxHwVP9Encode
         VABufferID m_qualityLevelBufferId;
         VABufferID m_packedHeaderParameterBufferId;
         VABufferID m_packedHeaderDataBufferId;
-        VABufferID m_priorityBufferId;
 
         // max number of temp layers is 8, but now supported only 4
         VABufferID m_tempLayersBufferId;
@@ -159,7 +164,7 @@ namespace MfxHwVP9Encode
 
         std::vector<mfxU8> m_frameHeaderBuf;
 
-        static const mfxU32 MAX_CONFIG_BUFFERS_COUNT = 27; // sps, pps, bitstream, uncomp header, segment map, per-segment parameters, temp layers, frame rate(up to 8), rate ctrl(up to 8), hrd, quality level
+        static const mfxU32 MAX_CONFIG_BUFFERS_COUNT = 26; // sps, pps, bitstream, uncomp header, segment map, per-segment parameters, temp layers, frame rate(up to 8), rate ctrl(up to 8), hrd, quality level
 
         mfxU32 m_width;
         mfxU32 m_height;
@@ -167,7 +172,6 @@ namespace MfxHwVP9Encode
 
         ENCODE_CAPS_VP9 m_caps;
         eMFXHWType m_platform;
-        mfxU32 m_MaxContextPriority;
 
         UMC::Mutex                      m_guard;
     };

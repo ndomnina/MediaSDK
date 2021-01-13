@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,6 @@
 #include "mfx_vp9_encode_hw_vaapi.h"
 #include "mfx_common_int.h"
 #include <map>
-#include "mfx_session.h"
 
 namespace MfxHwVP9Encode
 {
@@ -574,12 +573,6 @@ VAAPIEncoder::VAAPIEncoder()
 , m_vaDisplay(NULL)
 , m_vaContextEncode(VA_INVALID_ID)
 , m_vaConfig(VA_INVALID_ID)
-, m_sps()
-, m_pps()
-, m_vaBrcPar()
-, m_vaFrameRate()
-, m_priorityBuffer()
-, m_seqParam()
 , m_spsBufferId(VA_INVALID_ID)
 , m_ppsBufferId(VA_INVALID_ID)
 , m_segMapBufferId(VA_INVALID_ID)
@@ -588,15 +581,12 @@ VAAPIEncoder::VAAPIEncoder()
 , m_qualityLevelBufferId(VA_INVALID_ID)
 , m_packedHeaderParameterBufferId(VA_INVALID_ID)
 , m_packedHeaderDataBufferId(VA_INVALID_ID)
-, m_priorityBufferId(VA_INVALID_ID)
 , m_tempLayersBufferId(VA_INVALID_ID)
 , m_tempLayersParamsReset(false)
 , m_width(0)
 , m_height(0)
 , m_isBrcResetRequired(false)
-, m_caps()
 , m_platform()
-, m_MaxContextPriority(0)
 {
 } // VAAPIEncoder::VAAPIEncoder(VideoCORE* core)
 
@@ -689,7 +679,6 @@ mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(
         VAConfigAttribEncMacroblockInfo,
         VAConfigAttribEncMaxRefFrames,
         VAConfigAttribEncSkipFrame,
-        VAConfigAttribContextPriority
     };
     std::vector<VAConfigAttrib> attrs;
 
@@ -769,9 +758,6 @@ mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(
         m_caps.FrameLevelRateCtrl = attrs[idx_map[VAConfigAttribProcessingRate]].value == VA_PROCESSING_RATE_ENCODE;
         m_caps.BRCReset = attrs[idx_map[VAConfigAttribProcessingRate]].value == VA_PROCESSING_RATE_ENCODE;
     }
-
-    if (attrs[ idx_map[VAConfigAttribContextPriority] ].value != VA_ATTRIB_NOT_SUPPORTED)
-        m_MaxContextPriority = attrs[ idx_map[VAConfigAttribContextPriority] ].value;
 
     HardcodeCaps(m_caps, m_platform);
 
@@ -1019,6 +1005,13 @@ mfxStatus VAAPIEncoder::Register(mfxFrameAllocResponse& response, D3DDDIFORMAT t
 } // mfxStatus VAAPIEncoder::Register(mfxFrameAllocResponse& response, D3DDDIFORMAT type)
 
 
+mfxStatus VAAPIEncoder::Register(mfxMemId /*memId*/, D3DDDIFORMAT /*type*/)
+{
+    MFX_AUTO_LTRACE(MFX_TRACE_LEVEL_HOTSPOTS, "Register");
+    return MFX_ERR_UNSUPPORTED;
+
+} // mfxStatus VAAPIEncoder::Register(mfxMemId memId, D3DDDIFORMAT type)
+
 mfxStatus VAAPIEncoder::Execute(
     Task const & task,
     mfxHDLPair pair)
@@ -1189,41 +1182,6 @@ mfxStatus VAAPIEncoder::Execute(
 
         // 12. quality level
         configBuffers.push_back(m_qualityLevelBufferId);
-
-        // 13. Gpu Priority
-        if(m_MaxContextPriority)
-        {
-            mfxPriority contextPriority = m_pmfxCore->GetSession()->m_priority;
-            memset(&m_priorityBuffer, 0, sizeof(VAContextParameterUpdateBuffer));
-            m_priorityBuffer.flags.bits.context_priority_update = 1;   //need to set by parameter
-
-            if(contextPriority == MFX_PRIORITY_LOW)
-            {
-                m_priorityBuffer.context_priority.bits.priority = 0;
-            }
-            else if (contextPriority == MFX_PRIORITY_HIGH)
-            {
-                m_priorityBuffer.context_priority.bits.priority = m_MaxContextPriority;
-            }
-            else
-            {
-                m_priorityBuffer.context_priority.bits.priority = m_MaxContextPriority/2;
-            }
-
-            sts = CheckAndDestroyVAbuffer(m_vaDisplay, m_priorityBufferId);
-            MFX_CHECK_STS(sts);
-
-            vaSts = vaCreateBuffer(m_vaDisplay,
-                                   m_vaContextEncode,
-                                   VAContextParameterUpdateBufferType,
-                                   sizeof(m_priorityBuffer),
-                                   1,
-                                   &m_priorityBuffer,
-                                   &m_priorityBufferId);
-            MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-
-            configBuffers.push_back(m_priorityBufferId);
-	}
     }
 
     //------------------------------------------------------------------
@@ -1324,11 +1282,7 @@ mfxStatus VAAPIEncoder::QueryStatus(
 
     VASurfaceStatus surfSts = VASurfaceSkipped;
 
-#if VA_CHECK_VERSION(1,9,0)
-    vaSts = vaSyncBuffer(m_vaDisplay, codedBuffer, VA_TIMEOUT_INFINITE);
-#else
     vaSts = vaSyncSurface(m_vaDisplay, waitSurface);
-#endif
     MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
 
     {
@@ -1409,12 +1363,6 @@ mfxStatus VAAPIEncoder::Destroy()
 
     sts = CheckAndDestroyVAbuffer(m_vaDisplay, m_tempLayersBufferId);
     std::ignore = MFX_STS_TRACE(sts);
-
-    if(m_MaxContextPriority)
-    {
-        sts = CheckAndDestroyVAbuffer(m_vaDisplay, m_priorityBufferId);
-        std::ignore = MFX_STS_TRACE(sts);
-    }
 
     for (VABufferID& id : m_frameRateBufferIds)
     {

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2020 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -36,7 +36,7 @@
 #include "umc_h264_va_supplier.h"
 #include "umc_va_linux_protected.h"
 #include "umc_va_video_processing.h"
-#include "mfx_session.h"
+
 
 inline
 mfxU32 CalculateAsyncDepth(eMFXPlatform platform, mfxVideoParam *par)
@@ -453,10 +453,6 @@ mfxStatus VideoDECODEH264::Init(mfxVideoParam *par)
     }
 
     umcVideoParams.lpMemoryAllocator = &m_MemoryAllocator;
-
-#if (MFX_VERSION >= MFX_VERSION_NEXT)
-    umcVideoParams.m_ignore_level_constrain = par->mfx.IgnoreLevelConstrain;
-#endif
 
     umcSts = m_pH264VideoDecoder->Init(&umcVideoParams);
     if (umcSts != UMC::UMC_OK)
@@ -1224,8 +1220,6 @@ mfxStatus VideoDECODEH264::DecodeFrameCheck(mfxBitstream *bs, mfxFrameSurface1 *
         m_va->GetVideoProcessingVA()->SetOutputSurface(surfHDL);
     }
 #endif
-    //gpu session priority
-    m_va->m_ContextPriority = m_core->GetSession()->m_priority;
 
     try
     {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Intel Corporation
+// Copyright (c) 2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,7 @@
 #include "mfx_common.h"
 #if defined(MFX_ENABLE_H265_VIDEO_ENCODE) && defined (MFX_VA_LINUX)
 
-#include "hevcehw_base_lin.h"
-#include "hevcehw_g12_data.h"
+#include "hevcehw_g9_lin.h"
 
 namespace HEVCEHW
 {
@@ -32,27 +31,19 @@ namespace Linux
 {
 namespace Gen12
 {
-    enum eFeatureId
-    {
-        FEATURE_SCC = HEVCEHW::Gen12::eFeatureId::NUM_FEATURES
-        , NUM_FEATURES
-    };
-
     class MFXVideoENCODEH265_HW
-        : public Linux::Base::MFXVideoENCODEH265_HW
+        : public Linux::Gen9::MFXVideoENCODEH265_HW
     {
     public:
-        using TBaseGen = Linux::Base::MFXVideoENCODEH265_HW;
+        using TBaseGen = Linux::Gen9::MFXVideoENCODEH265_HW;
     
         MFXVideoENCODEH265_HW(
             VideoCORE& core
             , mfxStatus& status
             , eFeatureMode mode = eFeatureMode::INIT);
 
-        virtual mfxStatus Init(mfxVideoParam *par) override;
-
     protected:
-        using TFeatureList = HEVCEHW::Base::MFXVideoENCODEH265_HW::TFeatureList;
+        using TFeatureList = HEVCEHW::Gen9::MFXVideoENCODEH265_HW::TFeatureList;
 
         void InternalInitFeatures(
             mfxStatus& status

@@ -326,8 +326,6 @@ struct MFX_ENCODE_CAPS
     bool CBRSupport;
     bool VBRSupport;
     bool AVBRSupport;
-
-    bool AdaptiveMaxFrameSizeSupport;
 };
 
 // this enumeration is used to define the block size for intra prediction. they
