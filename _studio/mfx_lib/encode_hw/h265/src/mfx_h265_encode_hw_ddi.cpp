@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2020 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -429,12 +429,10 @@ mfxStatus FillCUQPDataDDI(Task& task, MfxVideoParam &par, VideoCORE& core, mfxFr
         FrameLocker lock(&core, task.m_midCUQp);
         MFX_CHECK(lock.Y, MFX_ERR_LOCK_MEMORY);
 
-        for (mfxU32 i = 0; i < CUQPFrameInfo.Height; i++) {
+        for (mfxU32 i = 0; i < CUQPFrameInfo.Height; i++)
             for (mfxU32 j = 0; j < CUQPFrameInfo.Width; j++)
-                lock.Y[i * lock.Pitch + j] = mbqp->QP[i*drBlkH / inBlkSize * pitch_MBQP + j * drBlkW / inBlkSize];
-            for (mfxU32 j = CUQPFrameInfo.Width; j < lock.Pitch; j++) // Fill all LCU blocks: HW hevc averages QP 
-                lock.Y[i * lock.Pitch + j] = lock.Y[i * lock.Pitch + CUQPFrameInfo.Width - 1];
-        }
+                    lock.Y[i * lock.Pitch + j] = mbqp->QP[i*drBlkH/inBlkSize * pitch_MBQP + j*drBlkW/inBlkSize];
+
     }
 #ifdef MFX_ENABLE_HEVCE_ROI
     else if (roi)

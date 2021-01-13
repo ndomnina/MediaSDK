@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,6 @@
 #if defined (MFX_ENABLE_MJPEG_VIDEO_ENCODE)
 
 #include <thread> // for thread::hardware_concurrency()
-
-#include <ippcore.h> // for MfxIppInit()
 
 #include "mfx_common.h"
 
@@ -1104,14 +1102,13 @@ mfxStatus MFXVideoENCODEMJPEG::Init(mfxVideoParam *par_in)
     mfxStatus st = MFX_ERR_NONE, QueryStatus = MFX_ERR_NONE;
     mfxVideoParam* par = par_in;
 
-    MFX_CHECK(!m_isInitialized, MFX_ERR_UNDEFINED_BEHAVIOR);
-    MFX_CHECK_NULL_PTR1(par);
+    if(m_isInitialized)
+        return MFX_ERR_UNDEFINED_BEHAVIOR;
 
-    auto ippSt = MfxIppInit();
-    MFX_CHECK(ippSt == ippStsNoErr, MFX_ERR_UNSUPPORTED);
+    if(par == NULL)
+        return MFX_ERR_NULL_PTR;
 
-    st = CheckExtBuffers(par->ExtParam, par->NumExtParam);
-    MFX_CHECK(st == MFX_ERR_NONE, MFX_ERR_INVALID_VIDEO_PARAM);
+    MFX_CHECK(CheckExtBuffers(par->ExtParam, par->NumExtParam)== MFX_ERR_NONE, MFX_ERR_INVALID_VIDEO_PARAM);
 
     mfxExtJPEGQuantTables*    jpegQT       = (mfxExtJPEGQuantTables*)   GetExtBuffer( par->ExtParam, par->NumExtParam, MFX_EXTBUFF_JPEG_QT );
     mfxExtJPEGHuffmanTables*  jpegHT       = (mfxExtJPEGHuffmanTables*) GetExtBuffer( par->ExtParam, par->NumExtParam, MFX_EXTBUFF_JPEG_HUFFMAN );
@@ -1351,11 +1348,13 @@ mfxStatus MFXVideoENCODEMJPEG::Reset(mfxVideoParam *par)
 {
     mfxStatus st, QueryStatus;
 
-    MFX_CHECK(m_isInitialized, MFX_ERR_NOT_INITIALIZED);
-    MFX_CHECK_NULL_PTR1(par);
+    if(!m_isInitialized)
+        return MFX_ERR_NOT_INITIALIZED;
 
-    st = CheckExtBuffers(par->ExtParam, par->NumExtParam);
-    MFX_CHECK(st == MFX_ERR_NONE, MFX_ERR_INVALID_VIDEO_PARAM);
+    if(par == NULL)
+        return MFX_ERR_NULL_PTR;
+
+    MFX_CHECK(CheckExtBuffers(par->ExtParam, par->NumExtParam)== MFX_ERR_NONE, MFX_ERR_INVALID_VIDEO_PARAM);
 
     mfxExtJPEGQuantTables*    jpegQT       = (mfxExtJPEGQuantTables*)   GetExtBuffer( par->ExtParam, par->NumExtParam, MFX_EXTBUFF_JPEG_QT );
     mfxExtJPEGHuffmanTables*  jpegHT       = (mfxExtJPEGHuffmanTables*) GetExtBuffer( par->ExtParam, par->NumExtParam, MFX_EXTBUFF_JPEG_HUFFMAN );

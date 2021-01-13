@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -246,16 +246,6 @@ mfxStatus CheckFrameInfoCodecs(mfxFrameInfo  *info, mfxU32 codecId, bool isHW)
             )
             return MFX_ERR_INVALID_VIDEO_PARAM;
         break;
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE) || defined(MFX_ENABLE_AV1_VIDEO_ENCODE)
-    case MFX_CODEC_AV1:
-            if (   info->FourCC != MFX_FOURCC_NV12
-                && info->FourCC != MFX_FOURCC_YV12
-                && info->FourCC != MFX_FOURCC_P010
-                && info->FourCC != MFX_FOURCC_AYUV
-                && info->FourCC != MFX_FOURCC_Y410)
-            MFX_RETURN(MFX_ERR_INVALID_VIDEO_PARAM);
-        break;
-#endif
 
     default:
         if (info->FourCC != MFX_FOURCC_NV12)
@@ -369,9 +359,6 @@ mfxStatus CheckVideoParamCommon(mfxVideoParam *in, eMFXHWType type)
         case MFX_CODEC_JPEG:
         case MFX_CODEC_VP8:
         case MFX_CODEC_VP9:
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE) || defined(MFX_ENABLE_AV1_VIDEO_ENCODE)
-        case MFX_CODEC_AV1:
-#endif
             break;
         default:
             return MFX_ERR_INVALID_VIDEO_PARAM;
@@ -563,8 +550,7 @@ mfxStatus CheckDecodersExtendedBuffers(mfxVideoParam const* par)
                                                                MFX_EXTBUFF_FEI_PARAM};
 
     static const mfxU32 g_decoderSupportedExtBuffersHEVC[]  = {
-                                                               MFX_EXTBUFF_HEVC_PARAM,
-	                                                         MFX_EXTBUFF_DEC_VIDEO_PROCESSING
+                                                               MFX_EXTBUFF_HEVC_PARAM
                                                                };
 
     static const mfxU32 g_decoderSupportedExtBuffersVC1[]   = {MFX_EXTBUFF_OPAQUE_SURFACE_ALLOCATION,

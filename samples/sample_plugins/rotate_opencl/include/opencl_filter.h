@@ -1,5 +1,5 @@
 /******************************************************************************\
-Copyright (c) 2005-2020, Intel Corporation
+Copyright (c) 2005-2019, Intel Corporation
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
@@ -21,26 +21,15 @@ or https://software.intel.com/en-us/media-client-solutions-support.
 
 #include <iostream>
 #include <stdexcept>
-
-#define CL_HPP_ENABLE_SIZE_T_COMPATIBILITY
-#define CL_HPP_ENABLE_PROGRAM_CONSTRUCTION_FROM_ARRAY_COMPATIBILITY
-#define CL_HPP_ENABLE_EXCEPTIONS
-#define CL_HPP_CL_1_2_DEFAULT_BUILD
-#define CL_HPP_MINIMUM_OPENCL_VERSION 120
-#define CL_HPP_TARGET_OPENCL_VERSION 120
-#include <CL/cl2.hpp>
+#include <CL/cl.h>
 
 #include "mfxvideo++.h"
 #include "logger.h"
 
 #if !defined(_WIN32) && !defined(_WIN64)
-#define DECL_CL_EXT_FUNC(func_name) func_name##_fn lin_##func_name
-#define INIT_CL_EXT_FUNC(platform_id, func_name) \
-    (lin_##func_name = (func_name##_fn)clGetExtensionFunctionAddressForPlatform(platform_id, #func_name))
+#define INIT_CL_EXT_FUNC(x) lin_##x = (x ## _fn)clGetExtensionFunctionAddress(#x);
 #else
-#define DECL_CL_EXT_FUNC(func_name) func_name##_fn pfn_##func_name
-#define INIT_CL_EXT_FUNC(platform_id, func_name) \
-    (pfn_##func_name = (func_name##_fn)clGetExtensionFunctionAddressForPlatform(platform_id, #func_name))
+#define INIT_CL_EXT_FUNC(x) x = (x ## _fn)clGetExtensionFunctionAddress(#x);
 #endif
 
 #define SAFE_OCL_FREE(P, FREE_FUNC) { if (P) { FREE_FUNC(P); P = NULL; } }
@@ -120,7 +109,6 @@ protected: // variables
     int                                 m_currentHeight;
 
     std::vector<OCL_YUV_kernel>         m_kernels;
-    std::vector<std::string>            m_requiredOclExtensions;
 
     static const size_t c_shared_surfaces_num = 2; // In and Out
     static const size_t c_ocl_surface_buffers_num = 2*c_shared_surfaces_num; // YIn, UVIn, YOut, UVOut

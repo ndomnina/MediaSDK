@@ -251,8 +251,6 @@ namespace TranscodingSample
         mfxU16 MaxKbps;
         mfxU16 InitialDelayInKB;
         mfxU16 GopOptFlag;
-        mfxU16 AdaptiveI;
-        mfxU16 AdaptiveB;
 
         mfxU16 WeightedPred;
         mfxU16 WeightedBiPred;
@@ -285,10 +283,6 @@ namespace TranscodingSample
         mfxU16 nQPP;
         mfxU16 nQPB;
         bool bDisableQPOffset;
-        mfxU16 QVBRQuality;
-        mfxU16 ICQQuality;
-        mfxU16 Convergence;
-        mfxU16 Accuracy;
 
         mfxU16 nAvcTemp;
         mfxU16 nBaseLayerPID;
@@ -317,7 +311,6 @@ namespace TranscodingSample
 
         bool bUseOpaqueMemory;
         bool bForceSysMem;
-        mfxU16 DecOutPattern;
         mfxU16 VppOutPattern;
         mfxU16 nGpuCopyMode;
 
@@ -340,8 +333,6 @@ namespace TranscodingSample
 
         mfxU32 nMaxFrameSize;
 
-        mfxU16 BitrateLimit;
-
 #if (MFX_VERSION >= 1025)
         mfxU16 numMFEFrames;
         mfxU16 MFMode;
@@ -362,8 +353,6 @@ namespace TranscodingSample
 
         EPresetModes PresetMode;
         bool shouldPrintPresets;
-
-        bool rawInput;
     };
 
     struct sInputParams: public __sInputParams
@@ -729,7 +718,6 @@ namespace TranscodingSample
         mfxStatus InitPluginMfxParams(sInputParams *pInParams);
         mfxStatus InitPreEncMfxParams(sInputParams *pInParams);
 
-        virtual mfxU32 FileFourCC2EncFourCC(mfxU32 fcc);
         void FillFrameInfoForEncoding(mfxFrameInfo& info, sInputParams *pInParams);
 
         mfxStatus AllocAndInitVppDoNotUse(sInputParams *pInParams);
@@ -871,8 +859,6 @@ namespace TranscodingSample
         bool isHEVCSW;
 
         bool m_bInsertIDR;
-
-        bool m_rawInput;
 
         std::unique_ptr<ExtendedBSStore>        m_pBSStore;
 

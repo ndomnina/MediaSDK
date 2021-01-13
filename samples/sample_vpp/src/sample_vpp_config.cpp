@@ -149,9 +149,6 @@ mfxStatus ConfigVideoEnhancementFilters( sInputParams* pParams, sAppResources* p
     {
         auto scalingConfig         = pVppParam->AddExtBuffer<mfxExtVPPScaling>();
         scalingConfig->ScalingMode = pParams->scalingMode;
-#if MFX_VERSION >= 1033
-        scalingConfig->InterpolationMethod = pParams->interpolationMethod;
-#endif
     }
 #if MFX_VERSION >= 1025
     if (pParams->bChromaSiting)

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2020 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -106,7 +106,7 @@ VAEntrypoint umc_to_va_entrypoint(uint32_t umc_entrypoint)
     case UMC::VA_VLD | UMC::VA_PROFILE_SCC:
     case UMC::VA_VLD | UMC::VA_PROFILE_SCC  | UMC::VA_PROFILE_10:
     case UMC::VA_VLD | UMC::VA_PROFILE_SCC  | UMC::VA_PROFILE_444:
-    case UMC::VA_VLD | UMC::VA_PROFILE_SCC  | UMC::VA_PROFILE_444 | UMC::VA_PROFILE_10:
+    case UMC::VA_VLD | UMC::VA_PROFILE_SCC  | UMC::VA_PROFILE_422:
 #endif
         va_entrypoint = VAEntrypointVLD;
         break;
@@ -126,10 +126,7 @@ uint32_t g_Profiles[] =
     UMC::VC1_VLD,
     UMC::VP8_VLD,
     UMC::VP9_VLD,
-    UMC::JPEG_VLD,
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-    UMC::AV1_VLD,
-#endif
+    UMC::JPEG_VLD
 };
 
 // va profile priorities for different codecs
@@ -174,17 +171,6 @@ VAProfile g_VP910BitsProfiles[] =
     VAProfileVP9Profile3, // chroma subsampling: 4:2:0, 4:2:2, 4:4:4
     VAProfileVP9Profile2  // chroma subsampling: 4:2:0
 };
-
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-VAProfile g_AV1Profiles[] =
-{
-    VAProfileAV1Profile0
-};
-VAProfile g_AV110BitsPProfiles[] =
-{
-    VAProfileAV1Profile0
-};
-#endif
 
 VAProfile g_JPEGProfiles[] =
 {
@@ -241,11 +227,9 @@ VAProfile get_next_va_profile(uint32_t umc_codec, uint32_t profile)
     case UMC::VA_H265 | UMC::VA_PROFILE_SCC | UMC::VA_PROFILE_10:
         if (profile < 1) va_profile = VAProfileHEVCSccMain10;
         break;
+    case UMC::VA_H265 | UMC::VA_PROFILE_SCC | UMC::VA_PROFILE_422:
     case UMC::VA_H265 | UMC::VA_PROFILE_SCC | UMC::VA_PROFILE_444:
         if (profile < 1) va_profile = VAProfileHEVCSccMain444;
-        MFX_FALLTHROUGH;
-    case UMC::VA_H265 | UMC::VA_PROFILE_SCC | UMC::VA_PROFILE_444 | UMC::VA_PROFILE_10:
-        if (profile < 1) va_profile = VAProfileHEVCSccMain444_10;
         break;
 #endif
 
@@ -268,14 +252,7 @@ VAProfile get_next_va_profile(uint32_t umc_codec, uint32_t profile)
     case UMC::VA_VP9 | UMC::VA_PROFILE_12 | UMC::VA_PROFILE_444:
         if (profile < UMC_ARRAY_SIZE(g_VP910BitsProfiles)) va_profile = g_VP910BitsProfiles[profile];
         break;
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-    case UMC::VA_AV1:
-        if (profile < UMC_ARRAY_SIZE(g_AV1Profiles)) va_profile = g_AV1Profiles[profile];
-        break;
-    case UMC::VA_AV1 | UMC::VA_PROFILE_10:
-        if (profile < UMC_ARRAY_SIZE(g_AV110BitsPProfiles)) va_profile = g_AV110BitsPProfiles[profile];
-        break;
-#endif
+
 #endif
     case UMC::VA_JPEG:
         if (profile < UMC_ARRAY_SIZE(g_JPEGProfiles)) va_profile = g_JPEGProfiles[profile];
@@ -412,9 +389,6 @@ Status LinuxVideoAccelerator::Init(VideoAcceleratorParams* pInfo)
                                   && ((m_Profile & VA_CODEC) != UMC::VA_VP9)
                                   && ((m_Profile & VA_CODEC) != UMC::VA_VC1)
                                   && ((m_Profile & VA_CODEC) != UMC::VA_MPEG2)
-#if defined (MFX_ENABLE_AV1_VIDEO_DECODE)
-                                  && ((m_Profile & VA_CODEC) != UMC::VA_AV1)
-#endif
 #ifndef ANDROID
                                   && ((m_Profile & VA_CODEC) != UMC::VA_JPEG)
 #endif
@@ -814,7 +788,7 @@ VACompBuffer* LinuxVideoAccelerator::GetCompBufferHW(int32_t type, int32_t size,
                 va_num_elements = size/sizeof(VASliceParameterBufferHEVC);
 #if (MFX_VERSION >= 1027)
                 if ((m_Profile & VA_PROFILE_REXT)
-#if (MFX_VERSION >= 1032)
+#if (MFX_VERSION >= MFX_VERSION_NEXT)
                     || (m_Profile & VA_PROFILE_SCC)
 #endif
                    )
@@ -824,12 +798,6 @@ VACompBuffer* LinuxVideoAccelerator::GetCompBufferHW(int32_t type, int32_t size,
                 }
 #endif
                 break;
-#if defined(MFX_ENABLE_AV1_VIDEO_DECODE)
-            case UMC::VA_AV1:
-                va_size         = sizeof(VASliceParameterBufferAV1);
-                va_num_elements = size/sizeof(VASliceParameterBufferAV1);
-                break;
-#endif
             default:
                 va_size         = 0;
                 va_num_elements = 0;
@@ -946,14 +914,7 @@ Status LinuxVideoAccelerator::EndFrame(void*)
 int32_t LinuxVideoAccelerator::GetSurfaceID(int32_t idx)
 {
     VASurfaceID *surface;
-    Status sts = UMC_OK;
-
-    try {
-        sts = m_allocator->GetFrameHandle(idx, &surface);
-    } catch (std::exception&) {
-        return VA_INVALID_SURFACE;
-    }
-
+    Status sts = m_allocator->GetFrameHandle(idx, &surface);
     if (sts != UMC_OK)
         return VA_INVALID_SURFACE;
 

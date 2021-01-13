@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Intel Corporation
+// Copyright (c) 2017 Intel Corporation
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -161,7 +161,8 @@ mfxStatus MFX_VP8_Utility::Query(VideoCORE *p_core, mfxVideoParam *p_in, mfxVide
 
     if (p_in == p_out)
     {
-        mfxVideoParam in1 = *p_in;
+        mfxVideoParam in1;
+        MFX_INTERNAL_CPY(&in1, p_in, sizeof(mfxVideoParam));
         return Query(p_core, &in1, p_out, type);
     }
 
@@ -243,17 +244,6 @@ mfxStatus MFX_VP8_Utility::Query(VideoCORE *p_core, mfxVideoParam *p_in, mfxVide
         p_out->mfx.FrameInfo.AspectRatioW = p_in->mfx.FrameInfo.AspectRatioW;
         p_out->mfx.FrameInfo.AspectRatioH = p_in->mfx.FrameInfo.AspectRatioH;
 
-        switch (p_in->mfx.FrameInfo.PicStruct)
-        {
-        case MFX_PICSTRUCT_UNKNOWN:
-        case MFX_PICSTRUCT_PROGRESSIVE:
-            p_out->mfx.FrameInfo.PicStruct = p_in->mfx.FrameInfo.PicStruct;
-            break;
-        default:
-            sts = MFX_ERR_UNSUPPORTED;
-            break;
-        }
-
         mfxStatus stsExt = CheckDecodersExtendedBuffers(p_in);
         if (stsExt < MFX_ERR_NONE)
             sts = MFX_ERR_UNSUPPORTED;
@@ -268,23 +258,20 @@ mfxStatus MFX_VP8_Utility::Query(VideoCORE *p_core, mfxVideoParam *p_in, mfxVide
 
         if (opaque_in && opaque_out)
         {
-            MFX_CHECK(opaque_out->In.Surfaces && opaque_in->In.Surfaces, MFX_ERR_UNDEFINED_BEHAVIOR);
-
             opaque_out->In.Type = opaque_in->In.Type;
             opaque_out->In.NumSurface = opaque_in->In.NumSurface;
-            if (opaque_in->In.Surfaces != opaque_out->In.Surfaces)
-                std::copy_n(opaque_in->In.Surfaces, opaque_in->In.NumSurface, opaque_out->In.Surfaces);
-
-            MFX_CHECK(opaque_out->Out.Surfaces && opaque_in->Out.Surfaces, MFX_ERR_UNDEFINED_BEHAVIOR);
+            MFX_INTERNAL_CPY(opaque_out->In.Surfaces, opaque_in->In.Surfaces, opaque_in->In.NumSurface);
 
             opaque_out->Out.Type = opaque_in->Out.Type;
             opaque_out->Out.NumSurface = opaque_in->Out.NumSurface;
-            if (opaque_in->Out.Surfaces !=  opaque_out->Out.Surfaces)
-                std::copy_n(opaque_in->Out.Surfaces, opaque_in->Out.NumSurface, opaque_out->Out.Surfaces);
+            MFX_INTERNAL_CPY(opaque_out->Out.Surfaces, opaque_in->Out.Surfaces, opaque_in->Out.NumSurface);
         }
         else
         {
-            MFX_CHECK(!opaque_out && !opaque_in, MFX_ERR_UNDEFINED_BEHAVIOR);
+            if (opaque_out || opaque_in)
+            {
+                sts = MFX_ERR_UNDEFINED_BEHAVIOR;
+            }
         }
 
         if (GetPlatform(p_core, p_out) != p_core->GetPlatformType() && sts == MFX_ERR_NONE)
@@ -323,6 +310,11 @@ mfxStatus MFX_VP8_Utility::Query(VideoCORE *p_core, mfxVideoParam *p_in, mfxVide
         else
         {
             p_out->IOPattern = MFX_IOPATTERN_OUT_VIDEO_MEMORY;
+        }
+
+        mfxExtOpaqueSurfaceAlloc * opaqueOut = (mfxExtOpaqueSurfaceAlloc *)GetExtBuffer(p_out->ExtParam, p_out->NumExtParam, MFX_EXTBUFF_OPAQUE_SURFACE_ALLOCATION);
+        if (opaqueOut)
+        {
         }
     }
 

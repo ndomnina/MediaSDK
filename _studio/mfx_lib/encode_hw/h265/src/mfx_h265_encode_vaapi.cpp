@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -31,7 +31,7 @@
 #include "mfx_h265_encode_vaapi.h"
 #include "mfx_h265_encode_hw_utils.h"
 #include <unordered_map>
-#include "mfx_session.h"
+
 //#define PARALLEL_BRC_support
 
 namespace MfxHwH265Encode
@@ -386,21 +386,11 @@ mfxStatus SetRateControl(
     if (   par.mfx.RateControlMethod != MFX_RATECONTROL_CQP
         && par.mfx.RateControlMethod != MFX_RATECONTROL_ICQ && par.mfx.RateControlMethod != MFX_RATECONTROL_LA_EXT)
     {
-        if (par.m_ext.CO3.WinBRCSize)
-        {
-            rate_param->rc_flags.bits.frame_tolerance_mode = 1; //sliding window
-            rate_param->window_size = 1000;
-            rate_param->bits_per_second = par.m_ext.CO3.WinBRCMaxAvgKbps * 1000;
-            rate_param->target_percentage = (mfxU32)(100.0 * (mfxF64)par.TargetKbps / (mfxF64)par.m_ext.CO3.WinBRCMaxAvgKbps);
-        }
-        else
-        {
-            rate_param->bits_per_second = par.MaxKbps * 1000;
-            if(par.MaxKbps)
-                rate_param->target_percentage = (mfxU32)(100.0 * (mfxF64)par.TargetKbps / (mfxF64)par.MaxKbps);
-            if (par.mfx.RateControlMethod == MFX_RATECONTROL_AVBR)
-                rate_param->window_size     = par.mfx.Convergence * 100;
-        }
+        rate_param->bits_per_second = par.MaxKbps * 1000;
+        if(par.MaxKbps)
+            rate_param->target_percentage = (unsigned int)(100.0 * (mfxF64)par.TargetKbps / (mfxF64)par.MaxKbps);
+        if (par.mfx.RateControlMethod == MFX_RATECONTROL_AVBR)
+        rate_param->window_size     = par.mfx.Convergence * 100;
         rate_param->rc_flags.bits.reset = isBrcResetRequired;
 
         rate_param->rc_flags.bits.enable_parallel_brc = 0;
@@ -532,41 +522,6 @@ mfxStatus SetQualityLevelParams(
     quality_param->quality_level = (unsigned int)(par.mfx.TargetUsage);
 
     vaSts = vaUnmapBuffer(vaDisplay, qualityParams_id);
-    MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-
-    return MFX_ERR_NONE;
-}
-
-static mfxStatus SetMaxFrameSize(
-    const UINT   userMaxFrameSize,
-    VADisplay    vaDisplay,
-    VAContextID  vaContextEncode,
-    VABufferID & frameSizeBuf_id)
-{
-    VAEncMiscParameterBuffer             *misc_param;
-    VAEncMiscParameterBufferMaxFrameSize *p_maxFrameSize;
-
-    mfxStatus sts = CheckAndDestroyVAbuffer(vaDisplay, frameSizeBuf_id);
-    MFX_CHECK_STS(sts);
-
-    VAStatus vaSts = vaCreateBuffer(vaDisplay,
-                   vaContextEncode,
-                   VAEncMiscParameterBufferType,
-                   sizeof(VAEncMiscParameterBuffer) + sizeof(VAEncMiscParameterBufferMaxFrameSize),
-                   1,
-                   NULL,
-                   &frameSizeBuf_id);
-    MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-
-    vaSts = vaMapBuffer(vaDisplay, frameSizeBuf_id, (void **)&misc_param);
-    MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-
-    misc_param->type = VAEncMiscParameterTypeMaxFrameSize;
-    p_maxFrameSize = (VAEncMiscParameterBufferMaxFrameSize *)misc_param->data;
-
-    p_maxFrameSize->max_frame_size = userMaxFrameSize*8;    // in bits for libva
-
-    vaSts = vaUnmapBuffer(vaDisplay, frameSizeBuf_id);
     MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
 
     return MFX_ERR_NONE;
@@ -796,11 +751,9 @@ VAAPIEncoder::VAAPIEncoder()
 , m_vaConfig(VA_INVALID_ID)
 , m_sps()
 , m_pps()
-, m_priorityBuffer()
 , m_width(0)
 , m_height(0)
 , m_caps()
-, m_MaxContextPriority(0)
 {
 }
 
@@ -844,10 +797,6 @@ void VAAPIEncoder::FillSps(
     sps.seq_fields.bits.pcm_enabled_flag                    = par.m_sps.pcm_enabled_flag;
     sps.seq_fields.bits.pcm_loop_filter_disabled_flag       = 1;//par.m_sps.pcm_loop_filter_disabled_flag;
     sps.seq_fields.bits.sps_temporal_mvp_enabled_flag       = par.m_sps.temporal_mvp_enabled_flag;
-
-    sps.seq_fields.bits.low_delay_seq    = par.m_sps.low_delay_mode;
-    sps.seq_fields.bits.hierachical_flag = par.m_sps.hierarchical_flag;
-    sps.ip_period                        = par.m_sps.gop_ref_dist;
 
     sps.log2_min_luma_coding_block_size_minus3 = (mfxU8)par.m_sps.log2_min_luma_coding_block_size_minus3;
 
@@ -929,8 +878,7 @@ mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(
         VAConfigAttribEncMaxRefFrames,
         VAConfigAttribEncSliceStructure,
         VAConfigAttribEncROI,
-        VAConfigAttribEncTileSupport,
-        VAConfigAttribContextPriority
+        VAConfigAttribEncTileSupport
     };
     std::vector<VAConfigAttrib> attrs;
 
@@ -1057,9 +1005,6 @@ mfxStatus VAAPIEncoder::CreateAuxilliaryDevice(
 
     m_caps.ddi_caps.IntraRefreshBlockUnitSize = 2;
     m_caps.ddi_caps.TileSupport = (attrs[idx_map[VAConfigAttribEncTileSupport]].value == 1);
-
-    if (attrs[ idx_map[VAConfigAttribContextPriority] ].value != VA_ATTRIB_NOT_SUPPORTED)
-        m_MaxContextPriority = attrs[ idx_map[VAConfigAttribContextPriority] ].value;
 
     sts = HardcodeCaps(m_caps, core, par);
     MFX_CHECK_STS(sts);
@@ -1190,12 +1135,6 @@ mfxStatus VAAPIEncoder::CreateAccelerationService(MfxVideoParam const & par)
 
     MFX_CHECK_WITH_ASSERT(MFX_ERR_NONE == SetFrameRate(par, m_vaDisplay, m_vaContextEncode, VABufferNew(VABID_FrameRate, 1)), MFX_ERR_DEVICE_FAILED);
     MFX_CHECK_WITH_ASSERT(MFX_ERR_NONE == SetQualityLevelParams(par, m_vaDisplay, m_vaContextEncode, VABufferNew(VABID_QualityLevel, 1)), MFX_ERR_DEVICE_FAILED);
-
-    if (par.m_ext.CO2.MaxFrameSize)
-    {
-        mfxStatus sts = SetMaxFrameSize(par.m_ext.CO2.MaxFrameSize, m_vaDisplay, m_vaContextEncode, VABufferNew(VABID_MaxFrameSize, 1));
-        MFX_CHECK_WITH_ASSERT(sts == MFX_ERR_NONE, MFX_ERR_DEVICE_FAILED);
-    }
     if(par.m_ext.CO2.MaxSliceSize != 0)
     {
         mfxStatus sts = SetMaxSliceSize(par, m_vaDisplay, m_vaContextEncode, VABufferNew(VABID_MaxSliceSize, 1));
@@ -1208,7 +1147,7 @@ mfxStatus VAAPIEncoder::CreateAccelerationService(MfxVideoParam const & par)
 
     if (par.bMBQPInput || par.bROIViaMBQP)
     {
-        m_cuqpMap.Init (par.m_ext.HEVCParam.PicWidthInLumaSamples, par.m_ext.HEVCParam.PicHeightInLumaSamples, m_caps.ddi_caps.BlockSize);
+        m_cuqpMap.Init (par.m_ext.HEVCParam.PicWidthInLumaSamples, par.m_ext.HEVCParam.PicHeightInLumaSamples);
     }
 
     return MFX_ERR_NONE;
@@ -1309,17 +1248,17 @@ bool operator!=(const ENCODE_ENC_CTRL_CAPS& l, const ENCODE_ENC_CTRL_CAPS& r)
     return !(l == r);
 }
 
-// block width/height = 8 << blockSize
-void CUQPMap::Init (mfxU32 picWidthInLumaSamples, mfxU32 picHeightInLumaSamples, mfxU32 blockSize)
+
+void CUQPMap::Init (mfxU32 picWidthInLumaSamples, mfxU32 picHeightInLumaSamples)
 {
-    //16 or 32 : driver limitation
-    mfxU32 blkSz   = 8 << blockSize;
-    m_width        = (picWidthInLumaSamples  + blkSz - 1) / blkSz;
-    m_height       = (picHeightInLumaSamples + blkSz - 1) / blkSz;
+
+    //16x32 only: driver limitation
+    m_width        = (picWidthInLumaSamples  + 31) / 32;
+    m_height       = (picHeightInLumaSamples + 31) / 32;
     m_pitch        = mfx::align2_value(m_width, 64);
     m_h_aligned    = mfx::align2_value(m_height, 4);
-    m_block_width  = blkSz;
-    m_block_height = blkSz;
+    m_block_width  = 32;
+    m_block_height = 32;
     m_buffer.resize(m_pitch * m_h_aligned);
     Zero(m_buffer);
 }
@@ -1335,13 +1274,13 @@ bool FillCUQPDataVA(Task const & task, MfxVideoParam &par, CUQPMap& cuqpMap)
     mfxExtEncoderROI* roi = ExtBuffer::Get(task.m_ctrl);
 #endif
 
-    if (cuqpMap.m_width == 0 || cuqpMap.m_height == 0 ||
-        cuqpMap.m_block_width == 0 || cuqpMap.m_block_height == 0)
+    if (cuqpMap.m_width == 0 ||  cuqpMap.m_height == 0 ||
+        cuqpMap.m_block_width == 0 ||  cuqpMap.m_block_height == 0)
     return false;
 
-    mfxU32 drBlkW = cuqpMap.m_block_width;  // block size of driver
-    mfxU32 drBlkH = cuqpMap.m_block_height; // block size of driver
-    mfxU16 inBlkSize = 16; //mbqp->BlockSize ? mbqp->BlockSize : 16;  //input block size
+    mfxU32 drBlkW  = cuqpMap.m_block_width;  // block size of driver
+    mfxU32 drBlkH  = cuqpMap.m_block_height;  // block size of driver
+    mfxU16 inBlkSize = 16;                    //mbqp->BlockSize ? mbqp->BlockSize : 16;  //input block size
 
     mfxU32 inputW = (par.m_ext.HEVCParam.PicWidthInLumaSamples   + inBlkSize - 1)/ inBlkSize;
     mfxU32 inputH = (par.m_ext.HEVCParam.PicHeightInLumaSamples  + inBlkSize - 1)/ inBlkSize;
@@ -1352,13 +1291,15 @@ bool FillCUQPDataVA(Task const & task, MfxVideoParam &par, CUQPMap& cuqpMap)
         {
             return  false;
         }
-        // Fill complete buffer, because of LCU based averaging
-        for (mfxU32 i = 0; i < cuqpMap.m_h_aligned; i++)
+        for (mfxU32 i = 0; i < cuqpMap.m_height; i++)
         {
-            for (mfxU32 j = 0; j < cuqpMap.m_pitch; j++)
+            for (mfxU32 j = 0; j < cuqpMap.m_width; j++)
             {
-                mfxU32 y = std::min(i * drBlkH/inBlkSize, inputH - 1);
-                mfxU32 x = std::min(j * drBlkW/inBlkSize, inputW - 1);
+                mfxU32 y = i* drBlkH/inBlkSize;
+                mfxU32 x = j* drBlkW/inBlkSize;
+
+                y = (y < inputH)? y:inputH;
+                x = (x < inputW)? x:inputW;
 
                 cuqpMap.m_buffer[i * cuqpMap.m_pitch + j] = mbqp->QP[y * inputW + x];
             }
@@ -1430,37 +1371,6 @@ mfxStatus SetSkipFrame(
     skipParam->size_skip_frames = sizeSkipFrames;
 
     vaSts = vaUnmapBuffer(vaDisplay, skipParam_id);
-    MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
-
-    return MFX_ERR_NONE;
-}
-
-mfxStatus VAAPIEncoder::FillPriorityBuffer(mfxPriority& priority)
-{
-    VAStatus vaSts;
-    memset(&m_priorityBuffer, 0, sizeof(VAContextParameterUpdateBuffer));
-    m_priorityBuffer.flags.bits.context_priority_update = 1;   //need to set by parameter
-
-    if(priority == MFX_PRIORITY_LOW)
-    {
-        m_priorityBuffer.context_priority.bits.priority = 0;
-    }
-    else if (priority == MFX_PRIORITY_HIGH)
-    {
-        m_priorityBuffer.context_priority.bits.priority = m_MaxContextPriority;
-    }
-    else
-    {
-        m_priorityBuffer.context_priority.bits.priority = m_MaxContextPriority/2;
-    }
-
-    vaSts = vaCreateBuffer(m_vaDisplay,
-        m_vaContextEncode,
-        VAContextParameterUpdateBufferType,
-        sizeof(m_priorityBuffer),
-        1,
-        &m_priorityBuffer,
-        &VABufferNew(VABID_PriorityBufferId, 0));
     MFX_CHECK_WITH_ASSERT(VA_STATUS_SUCCESS == vaSts, MFX_ERR_DEVICE_FAILED);
 
     return MFX_ERR_NONE;
@@ -1782,14 +1692,6 @@ mfxStatus VAAPIEncoder::Execute(Task const & task, mfxHDLPair pair)
         VABufferID &m_rirId = VABufferNew(VABID_RIR,0);
         MFX_CHECK_WITH_ASSERT(MFX_ERR_NONE == SetRollingIntraRefresh(task.m_IRState, m_vaDisplay,
                                                                  m_vaContextEncode, m_rirId), MFX_ERR_DEVICE_FAILED);
-    }
-
-    //Gpu priority
-    if(m_MaxContextPriority)
-    {
-        mfxPriority contextPriority = m_core->GetSession()->m_priority;
-        mfxStatus mfxSts = FillPriorityBuffer(contextPriority);
-        MFX_CHECK(mfxSts == MFX_ERR_NONE, MFX_ERR_DEVICE_FAILED);
     }
 
     mfxU32 storedSize = 0;

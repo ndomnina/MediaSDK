@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2020 Intel Corporation
+// Copyright (c) 2017-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -928,9 +928,6 @@ UMC::Status MFX_Utility::DecodeHeader(UMC::TaskSupplier * supplier, UMC::H264Vid
     if (!lpInfo->m_pData->GetDataSize())
         return UMC::UMC_ERR_NOT_ENOUGH_DATA;
 
-#if (MFX_VERSION >= MFX_VERSION_NEXT)
-    lpInfo->m_ignore_level_constrain = out->mfx.IgnoreLevelConstrain;
-#endif
     umcRes = supplier->PreInit(lpInfo);
     if (umcRes != UMC::UMC_OK)
         return UMC::UMC_ERR_FAILED;
@@ -1058,8 +1055,6 @@ mfxStatus MFX_Utility::Query(VideoCORE *core, mfxVideoParam *in, mfxVideoParam *
 
     if (in)
     {
-        out->mfx.MaxDecFrameBuffering = in->mfx.MaxDecFrameBuffering;
-
         if (in->mfx.CodecId == MFX_CODEC_AVC)
             out->mfx.CodecId = in->mfx.CodecId;
 
@@ -1087,10 +1082,6 @@ mfxStatus MFX_Utility::Query(VideoCORE *core, mfxVideoParam *in, mfxVideoParam *
 
         }
 
-#if (MFX_VERSION >= MFX_VERSION_NEXT)
-        out->mfx.IgnoreLevelConstrain = in->mfx.IgnoreLevelConstrain;
-#endif
-
         switch (in->mfx.CodecLevel)
         {
         case MFX_LEVEL_UNKNOWN:
@@ -1111,11 +1102,6 @@ mfxStatus MFX_Utility::Query(VideoCORE *core, mfxVideoParam *in, mfxVideoParam *
         case MFX_LEVEL_AVC_5:
         case MFX_LEVEL_AVC_51:
         case MFX_LEVEL_AVC_52:
-#if (MFX_VERSION >= MFX_VERSION_NEXT)
-        case MFX_LEVEL_AVC_6:
-        case MFX_LEVEL_AVC_61:
-        case MFX_LEVEL_AVC_62:
-#endif
             out->mfx.CodecLevel = in->mfx.CodecLevel;
             break;
         default:
@@ -1339,11 +1325,6 @@ mfxStatus MFX_Utility::Query(VideoCORE *core, mfxVideoParam *in, mfxVideoParam *
                     case MFX_LEVEL_AVC_5:
                     case MFX_LEVEL_AVC_51:
                     case MFX_LEVEL_AVC_52:
-#if (MFX_VERSION >= MFX_VERSION_NEXT)
-                    case MFX_LEVEL_AVC_6:
-                    case MFX_LEVEL_AVC_61:
-                    case MFX_LEVEL_AVC_62:
-#endif
                         mvcPointsOut->OP[i].LevelIdc = mvcPointsIn->OP[i].LevelIdc;
                         break;
                     default:

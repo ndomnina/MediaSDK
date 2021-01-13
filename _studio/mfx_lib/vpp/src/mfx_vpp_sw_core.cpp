@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 Intel Corporation
+// Copyright (c) 2018-2019 Intel Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -916,43 +916,8 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
 
         } // if (in->ExtParam && out->ExtParam && (in->NumExtParam == out->NumExtParam) )
 
-        if (core->GetHWType() < MFX_HW_ICL)
-        {
-            if (out->vpp.Out.FourCC == MFX_FOURCC_P010 &&
-                out->vpp.In.FourCC  != MFX_FOURCC_NV12 &&
-                out->vpp.In.FourCC  != MFX_FOURCC_YV12 &&
-                out->vpp.In.FourCC  != MFX_FOURCC_YUY2 &&
-                out->vpp.In.FourCC  != MFX_FOURCC_RGB4 &&
-                out->vpp.In.FourCC  != MFX_FOURCC_P010) {
-                if( out->vpp.In.FourCC )
-                {
-                    out->vpp.In.FourCC = 0;
-                    mfxSts = MFX_ERR_UNSUPPORTED;
-                }
-            }
-        }
-
-#if (MFX_VERSION >= 1031)
-        if (core->GetHWType() <= MFX_HW_ICL_LP)
-        {
-            if (out->vpp.In.FourCC == MFX_FOURCC_P016 ||
-                out->vpp.In.FourCC == MFX_FOURCC_Y216 ||
-                out->vpp.In.FourCC == MFX_FOURCC_Y416 ||
-                out->vpp.Out.FourCC == MFX_FOURCC_P016 ||
-                out->vpp.Out.FourCC == MFX_FOURCC_Y216 ||
-                out->vpp.Out.FourCC == MFX_FOURCC_Y416) {
-                if( out->vpp.In.FourCC )
-                {
-                    out->vpp.In.FourCC = 0;
-                    mfxSts = MFX_ERR_UNSUPPORTED;
-                }
-            }
-        }
-#endif
-
         if ( out->vpp.In.FourCC  != MFX_FOURCC_P010 &&
              out->vpp.In.FourCC  != MFX_FOURCC_P210 &&
-             out->vpp.In.FourCC  != MFX_FOURCC_A2RGB10 &&
              out->vpp.Out.FourCC == MFX_FOURCC_A2RGB10 ){
             if( out->vpp.In.FourCC )
             {
@@ -964,7 +929,6 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
         if ( out->vpp.In.FourCC  == MFX_FOURCC_P010 &&
              out->vpp.Out.FourCC != MFX_FOURCC_A2RGB10 &&
              out->vpp.Out.FourCC != MFX_FOURCC_NV12 &&
-             out->vpp.Out.FourCC != MFX_FOURCC_YV12 &&
              out->vpp.Out.FourCC != MFX_FOURCC_P010 &&
              out->vpp.Out.FourCC != MFX_FOURCC_P210 &&
              out->vpp.Out.FourCC != MFX_FOURCC_YUY2 &&
@@ -1004,9 +968,7 @@ mfxStatus VideoVPPBase::Query(VideoCORE * core, mfxVideoParam *in, mfxVideoParam
             out->vpp.In.FourCC != MFX_FOURCC_Y216 &&
             out->vpp.In.FourCC != MFX_FOURCC_Y416 &&
 #endif
-            out->vpp.In.FourCC != MFX_FOURCC_AYUV &&
-            // A2RGB10 supported as input in case of passthru copy
-            out->vpp.In.FourCC != MFX_FOURCC_A2RGB10 )
+            out->vpp.In.FourCC != MFX_FOURCC_AYUV)
         {
             if( out->vpp.In.FourCC )
             {

@@ -71,7 +71,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   [-dGfx] - preffer processing on dGfx (by default system decides)\n"));
     msdk_printf(MSDK_STRING("   [-iGfx] - preffer processing on iGfx (by default system decides)\n"));
 #endif
-    msdk_printf(MSDK_STRING("   [-nv12|yuy2|uyvy|ayuv|rgb4|p010|y210|y410|a2rgb10|p016|y216] - input color format (by default YUV420 is expected).\n"));
+    msdk_printf(MSDK_STRING("   [-nv12|yuy2|uyvy|ayuv|rgb4|p010|y210|y410|a2rgb10] - input color format (by default YUV420 is expected).\n"));
     msdk_printf(MSDK_STRING("   [-msb10] - 10-bit color format is expected to have data in Most Significant Bits of words.\n                 (LSB data placement is expected by default).\n                 This option also disables data shifting during file reading.\n"));
     msdk_printf(MSDK_STRING("   [-ec::p010] - force usage of P010 surfaces for encoder (conversion will be made if necessary). Use for 10 bit HEVC encoding\n"));
     msdk_printf(MSDK_STRING("   [-tff|bff] - input stream is interlaced, top|bottom fielf first, if not specified progressive is expected\n"));
@@ -93,7 +93,6 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   [-la] - use the look ahead bitrate control algorithm (LA BRC) (by default constant bitrate control method is used)\n"));
     msdk_printf(MSDK_STRING("           for H.264, H.265 encoder. Supported only with -hw option on 4th Generation Intel Core processors. \n"));
     msdk_printf(MSDK_STRING("           if [-icq] option is also enabled simultaneously, then LA_ICQ bitrate control algotithm will be used. \n"));
-    msdk_printf(MSDK_STRING("   [-la_ext] - use external LA plugin (compatible with H.264, H.265 encoders)\n"));
     msdk_printf(MSDK_STRING("   [-lad depth] - depth parameter for the LA BRC, the number of frames to be analyzed before encoding. In range [0,100] (0 - default: auto-select by mediasdk library).\n"));
     msdk_printf(MSDK_STRING("            may be 1 in the case when -mss option is specified \n"));
     msdk_printf(MSDK_STRING("            if [-icq] option is also enabled simultaneously, then LA_ICQ bitrate control algotithm will be used. \n"));
@@ -109,7 +108,6 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   [-robust:soft]           - Recovery from GPU hang by inserting an IDR\n"));
     msdk_printf(MSDK_STRING("   [-vbr]                   - variable bitrate control\n"));
     msdk_printf(MSDK_STRING("   [-cbr]                   - constant bitrate control\n"));
-    msdk_printf(MSDK_STRING("   [-vcm]                   - Video Conferencing Mode (VCM) bitrate control method\n"));
     msdk_printf(MSDK_STRING("   [-qvbr quality]          - variable bitrate control algorithm with constant quality. Quality in range [1,51]. 1 is the best quality.\n"));
     msdk_printf(MSDK_STRING("   [-icq quality]           - Intelligent Constant Quality (ICQ) bitrate control method. In range [1,51]. 1 is the best quality.\n"));
     msdk_printf(MSDK_STRING("                              If [-la] or [-lad] options are enabled simultaneously, then LA_ICQ bitrate control method will be used.\n"));
@@ -143,7 +141,6 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("                              If num_slice equals zero, the encoder may choose any slice partitioning allowed by the codec standard.\n"));
     msdk_printf(MSDK_STRING("   [-mss]                   - maximum slice size in bytes. Supported only with -hw and h264 codec. This option is not compatible with -num_slice option.\n"));
     msdk_printf(MSDK_STRING("   [-mfs]                   - maximum frame size in bytes. Supported only with h264 and hevc codec for VBR mode.\n"));
-    msdk_printf(MSDK_STRING("   [-BitrateLimit:<on,off>] - Turn this flag ON to set bitrate limitations imposed by the SDK encoder. Off by default.\n"));
     msdk_printf(MSDK_STRING("   [-re]                    - enable region encode mode. Works only with h265 encoder\n"));
     msdk_printf(MSDK_STRING("   [-trows rows]            - Number of rows for tiled encoding\n"));
     msdk_printf(MSDK_STRING("   [-tcols cols]            - Number of columns for tiled encoding\n"));
@@ -169,7 +166,7 @@ void PrintHelp(msdk_char *strAppName, const msdk_char *strErrorMessage, ...)
     msdk_printf(MSDK_STRING("   [-WeightedPred:default|implicit ]   - enables weighted prediction mode\n"));
     msdk_printf(MSDK_STRING("   [-WeightedBiPred:default|implicit ] - enables weighted bi-prediction mode\n"));
     msdk_printf(MSDK_STRING("   [-timeout]               - encoding in cycle not less than specific time in seconds\n"));
-    msdk_printf(MSDK_STRING("   [-perf_opt n]            - sets number of prefetched frames. In performance mode app preallocates buffer and loads first n frames\n"));
+    msdk_printf(MSDK_STRING("   [-perf_opt n]            - sets number of prefetched frames. In performance mode app preallocates buffer and load first n frames\n"));
     msdk_printf(MSDK_STRING("   [-uncut]                 - do not cut output file in looped mode (in case of -timeout option)\n"));
     msdk_printf(MSDK_STRING("   [-dump fileName]         - dump MSDK components configuration to the file in text form\n"));
     msdk_printf(MSDK_STRING("   [-qpfile <filepath>]     - if specified, the encoder will take frame parameters (frame number, QP, frame type) from text file\n"));
@@ -290,27 +287,6 @@ mfxStatus ParseAdditionalParams(msdk_char *strInput[], mfxU8 nArgNum, mfxU8& i, 
     {
         pParams->nVuiNalHrdParameters = MFX_CODINGOPTION_OFF;
     }
-    else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-la_ext")))
-    {
-        pParams->bEnableExtLA            = true;
-        pParams->nRateControlMethod      = MFX_RATECONTROL_LA_EXT;
-    }
-    else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-vcm")))
-    {
-        pParams->nRateControlMethod = MFX_RATECONTROL_VCM;
-    }
-#if (MFX_VERSION >= 1031)
-    else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-p016")))
-    {
-        pParams->FileInputFourCC = MFX_FOURCC_P016;
-        pParams->EncodeFourCC = MFX_FOURCC_P016;
-    }
-    else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-y216")))
-    {
-        pParams->FileInputFourCC = MFX_FOURCC_Y216;
-        pParams->EncodeFourCC = MFX_FOURCC_Y216;
-    }
-#endif
     else
     {
         return MFX_ERR_NOT_FOUND;
@@ -339,7 +315,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
     pParams->EncodeFourCC = MFX_FOURCC_NV12;
     pParams->nPRefType = MFX_P_REF_DEFAULT;
     pParams->QPFileMode = false;
-    pParams->BitrateLimit = MFX_CODINGOPTION_OFF;
 #if (MFX_VERSION >= 1027)
     pParams->RoundingOffsetFile = NULL;
 #endif
@@ -573,8 +548,7 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 pParams->nRateControlMethod = MFX_RATECONTROL_LA_ICQ;
             }
             else if (pParams->nRateControlMethod != MFX_RATECONTROL_LA &&
-                    pParams->nRateControlMethod != MFX_RATECONTROL_LA_ICQ &&
-                    pParams->nRateControlMethod != MFX_RATECONTROL_LA_EXT)
+                    pParams->nRateControlMethod != MFX_RATECONTROL_LA_ICQ)
             {
                 PrintHelp(strInput[0], MSDK_STRING("More than one BRC modes assigned, and another BRC mode isn't compatible with LA."));
                 return MFX_ERR_UNSUPPORTED;
@@ -648,14 +622,6 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
                 PrintHelp(strInput[0], MSDK_STRING("MaxFrameSize is invalid"));
                 return MFX_ERR_UNSUPPORTED;
             }
-        }
-        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-BitrateLimit:on")))
-        {
-            pParams->BitrateLimit = MFX_CODINGOPTION_ON;
-        }
-        else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-BitrateLimit:off")))
-        {
-            pParams->BitrateLimit = MFX_CODINGOPTION_OFF;
         }
         else if (0 == msdk_strcmp(strInput[i], MSDK_STRING("-qpfile")))
         {
@@ -1468,12 +1434,11 @@ mfxStatus ParseInputString(msdk_char* strInput[], mfxU8 nArgNum, sInputParams* p
         return MFX_ERR_UNSUPPORTED;
     }
 
-    if (pParams->nRateControlMethod == MFX_RATECONTROL_LA  &&
-        pParams->CodecId == MFX_CODEC_HEVC)
-    {
-        pParams->bEnableExtLA            = true;
-        pParams->nRateControlMethod      = MFX_RATECONTROL_LA_EXT;
-    }
+    //if ((pParams->nRateControlMethod == MFX_RATECONTROL_LA) && (pParams->CodecId != MFX_CODEC_AVC))
+    //{
+    //    PrintHelp(strInput[0], MSDK_STRING("Look ahead BRC is supported only with H.264 encoder!"));
+    //    return MFX_ERR_UNSUPPORTED;
+    //}
 
     if ((pParams->nMaxSliceSize) && (pParams->CodecId != MFX_CODEC_AVC) && (pParams->CodecId != MFX_CODEC_HEVC))
     {
@@ -1554,6 +1519,14 @@ void ModifyParamsUsingPresets(sInputParams& params)
 {
     COutputPresetParameters presetParams = CPresetManager::Inst.GetPreset(params.PresetMode, params.CodecId,params.dFrameRate, params.nWidth, params.nHeight, params.bUseHWLib);
 
+    if (presetParams.RateControlMethod == MFX_RATECONTROL_LA_EXT)
+    {
+        // Currently sample_encode does not support external LA, so we will use ExtBRC instead
+        presetParams.RateControlMethod = MFX_RATECONTROL_VBR;
+        presetParams.LookAheadDepth = 0;
+        presetParams.ExtBRCUsage = EXTBRC_ON;
+    }
+
     if (params.shouldPrintPresets)
     {
         msdk_printf(MSDK_STRING("Preset-controlled parameters (%s):\n"), presetParams.PresetName.c_str());
@@ -1583,7 +1556,7 @@ void ModifyParamsUsingPresets(sInputParams& params)
     {
         MODIFY_AND_PRINT_PARAM(params.nBitRate, TargetKbps, params.shouldPrintPresets);
         MODIFY_AND_PRINT_PARAM(params.MaxKbps, MaxKbps, params.shouldPrintPresets);
-        presetParams.BufferSizeInKB = params.nBitRate / 8; // Update bitrate to reflect manually set bitrate. BufferSize should be enough for 1 second of video
+        presetParams.BufferSizeInKB = params.nBitRate; // Update bitrate to reflect manually set bitrate. BufferSize should be enough for 1 second of video
         MODIFY_AND_PRINT_PARAM(params.BufferSizeInKB, BufferSizeInKB, params.shouldPrintPresets);
     }
 
